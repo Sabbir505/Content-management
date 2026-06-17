@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -30,6 +31,7 @@ interface BoardItem {
 }
 
 function BoardsContent() {
+  const router = useRouter();
   const { user } = useAuth();
   const [boards, setBoards] = useState<Board[]>([]);
   const [items, setItems] = useState<BoardItem[]>([]);
@@ -190,7 +192,7 @@ function BoardsContent() {
           <CardContent className="p-6 text-center">
             <h2 className="text-xl font-semibold mb-2">Sign In Required</h2>
             <p className="text-gray-600 mb-4">Please sign in to access your swipe files.</p>
-            <Button onClick={() => window.location.href = "/auth/login"}>Sign In</Button>
+            <Button onClick={() => { router.push("/auth/login") }}>Sign In</Button>
           </CardContent>
         </Card>
       </div>

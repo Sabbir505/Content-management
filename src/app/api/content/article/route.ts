@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
 
         // Try to get the final URL from the response
         if (redirectResponse.url && !redirectResponse.url.includes("news.google.com")) {
-          const resolvedValidation = validateUrl(redirectResponse.url);
+          const resolvedValidation = await validateUrl(redirectResponse.url);
           if (!resolvedValidation.valid) {
             return NextResponse.json(
               { success: false, error: resolvedValidation.error },
@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
             if (match && match[1]) {
               const foundUrl = match[1].trim();
               if (foundUrl.startsWith("http") && !foundUrl.includes("news.google.com")) {
-                const foundValidation = validateUrl(foundUrl);
+                const foundValidation = await validateUrl(foundUrl);
                 if (foundValidation.valid) {
                   resolvedUrl = foundUrl;
                   break;
@@ -334,14 +334,136 @@ function extractPublishedDate(html: string): string | undefined {
 }
 
 function decodeHTMLEntities(text: string): string {
-  const entities: Record<string, string> = {
+  // Decode numeric entities: &#123; and &#x7B;
+  let decoded = text.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
+  decoded = decoded.replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(Number.parseInt(hex, 16)));
+
+  // Decode named entities (common set)
+  const namedEntities: Record<string, string> = {
     "&amp;": "&",
     "&lt;": "<",
     "&gt;": ">",
     "&quot;": '"',
     "&#39;": "'",
     "&apos;": "'",
+    "&nbsp;": " ",
+    "&ndash;": "–",
+    "&mdash;": "—",
+    "&lsquo;": "'",
+    "&rsquo;": "'",
+    "&ldquo;": '"',
+    "&rdquo;": '"',
+    "&hellip;": "…",
+    "&bull;": "•",
+    "&copy;": "©",
+    "&reg;": "®",
+    "&trade;": "™",
+    "&euro;": "€",
+    "&pound;": "£",
+    "&yen;": "¥",
+    "&cent;": "¢",
+    "&deg;": "°",
+    "&plusmn;": "±",
+    "&times;": "×",
+    "&divide;": "÷",
+    "&frac12;": "½",
+    "&frac14;": "¼",
+    "&frac34;": "¾",
+    "&sup2;": "²",
+    "&sup3;": "³",
+    "&laquo;": "«",
+    "&raquo;": "»",
+    "&lsaquo;": "‹",
+    "&rsaquo;": "›",
+    "&middot;": "·",
+    "&sect;": "§",
+    "&para;": "¶",
+    "&dagger;": "†",
+    "&Dagger;": "‡",
+    "&prime;": "′",
+    "&Prime;": "″",
+    "&oline;": "‾",
+    "&frasl;": "⁄",
+    "&weierp;": "℘",
+    "&image;": "ℑ",
+    "&real;": "ℜ",
+    "&alefsym;": "ℵ",
+    "&larr;": "←",
+    "&uarr;": "↑",
+    "&rarr;": "→",
+    "&darr;": "↓",
+    "&harr;": "↔",
+    "&crarr;": "↵",
+    "&lArr;": "⇐",
+    "&uArr;": "⇑",
+    "&rArr;": "⇒",
+    "&dArr;": "⇓",
+    "&hArr;": "⇔",
+    "&forall;": "∀",
+    "&part;": "∂",
+    "&exist;": "∃",
+    "&empty;": "∅",
+    "&nabla;": "∇",
+    "&isin;": "∈",
+    "&notin;": "∉",
+    "&ni;": "∋",
+    "&prod;": "∏",
+    "&sum;": "∑",
+    "&minus;": "−",
+    "&lowast;": "∗",
+    "&radic;": "√",
+    "&prop;": "∝",
+    "&infin;": "∞",
+    "&ang;": "∠",
+    "&and;": "∧",
+    "&or;": "∨",
+    "&cap;": "∩",
+    "&cup;": "∪",
+    "&int;": "∫",
+    "&there4;": "∴",
+    "&sim;": "∼",
+    "&cong;": "≅",
+    "&asymp;": "≈",
+    "&ne;": "≠",
+    "&equiv;": "≡",
+    "&le;": "≤",
+    "&ge;": "≥",
+    "&sub;": "⊂",
+    "&sup;": "⊃",
+    "&nsub;": "⊄",
+    "&sube;": "⊆",
+    "&supe;": "⊇",
+    "&oplus;": "⊕",
+    "&otimes;": "⊗",
+    "&perp;": "⊥",
+    "&sdot;": "⋅",
+    "&lceil;": "⌈",
+    "&rceil;": "⌉",
+    "&lfloor;": "⌊",
+    "&rfloor;": "⌋",
+    "&lang;": "⟨",
+    "&rang;": "⟩",
+    "&loz;": "◊",
+    "&spades;": "♠",
+    "&clubs;": "♣",
+    "&hearts;": "♥",
+    "&diams;": "♦",
+    "&OElig;": "Œ",
+    "&oelig;": "œ",
+    "&Scaron;": "Š",
+    "&scaron;": "š",
+    "&Yuml;": "Ÿ",
+    "&circ;": "ˆ",
+    "&tilde;": "˜",
+    "&ensp;": " ",
+    "&emsp;": " ",
+    "&thinsp;": " ",
+    "&zwnj;": "",
+    "&zwj;": "",
+    "&lrm;": "",
+    "&rlm;": "",
+    "&shy;": "­",
   };
 
-  return text.replace(/&[^;]+;/g, (entity) => entities[entity] || entity);
+  return decoded.replace(/&[^;]+;/g, (entity) => namedEntities[entity] || entity);
 }

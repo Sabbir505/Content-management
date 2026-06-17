@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense, useCallback, useEffect, useMemo } from "react";
+import { useState, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1185,8 +1185,11 @@ function ChannelAnalyzerContent() {
     }
   }, [connectedChannel]);
 
+  const hasLoadedRef = useRef(false);
+
   useEffect(() => {
-    if (isConnected && connectedChannel?.channelId) {
+    if (isConnected && connectedChannel?.channelId && !hasLoadedRef.current) {
+      hasLoadedRef.current = true;
       loadMyChannel();
     }
   }, [isConnected, connectedChannel, loadMyChannel]);

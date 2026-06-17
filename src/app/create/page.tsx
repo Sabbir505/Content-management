@@ -409,7 +409,7 @@ function CreatePageContent() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               videoTitle: topic,
-              videoDescription: socialDescription || script.slice(0, 500),
+              videoDescription: socialDescription || (script ? script.slice(0, 500) : ""),
               platform,
               userVoice: formatVoiceForPrompt(voiceProfile),
             }),

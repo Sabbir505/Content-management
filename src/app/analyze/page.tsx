@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, Suspense, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, Suspense, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import type { AnalyzeResult } from "@/lib/analyze-structure/types";
 
 function AnalyzePageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const videoId = searchParams.get("videoId");
   const contentId = searchParams.get("contentId");
 
@@ -18,15 +19,7 @@ function AnalyzePageContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (videoId) {
-      analyzeVideo(videoId);
-    } else if (contentId) {
-      analyzeArticle(contentId);
-    }
-  }, [videoId, contentId]);
-
-  async function analyzeVideo(id: string) {
+  const analyzeVideo = useCallback(async (id: string) => {
     setIsLoading(true);
     setError(null);
 
@@ -50,9 +43,9 @@ function AnalyzePageContent() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, []);
 
-  async function analyzeArticle(url: string) {
+  const analyzeArticle = useCallback(async (url: string) => {
     setIsLoading(true);
     setError(null);
 
@@ -76,7 +69,15 @@ function AnalyzePageContent() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (videoId) {
+      analyzeVideo(videoId);
+    } else if (contentId) {
+      analyzeArticle(contentId);
+    }
+  }, [videoId, contentId, analyzeVideo, analyzeArticle]);
 
   // Loading state
   if (isLoading) {
@@ -150,7 +151,7 @@ function AnalyzePageContent() {
               <Button
                 variant="outline"
                 className="mt-4"
-                onClick={() => window.location.href = "/discover"}
+                onClick={() => router.push("/discover")}
               >
                 Go to Discover
               </Button>

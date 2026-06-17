@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { signUpWithEmail, signInWithGoogle } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -9,18 +9,26 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 import Link from "next/link";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function SignUpPage() {
   const router = useRouter();
+  const { user, isLoading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      router.push("/discover");
+    }
+  }, [user, router]);
 
   async function handleEmailSignUp(e: React.FormEvent) {
     e.preventDefault();
-    setIsLoading(true);
+    setIsLoadingAuth(true);
     setError("");
 
     try {
@@ -29,12 +37,12 @@ export default function SignUpPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to sign up");
     } finally {
-      setIsLoading(false);
+      setIsLoadingAuth(false);
     }
   }
 
   async function handleGoogleSignUp() {
-    setIsLoading(true);
+    setIsLoadingAuth(true);
     setError("");
 
     try {
@@ -43,7 +51,7 @@ export default function SignUpPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to sign up with Google");
     } finally {
-      setIsLoading(false);
+      setIsLoadingAuth(false);
     }
   }
 
@@ -90,8 +98,8 @@ export default function SignUpPage() {
               />
             </div>
             {error && <p className="text-sm text-red-500">{error}</p>}
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Creating account..." : "Create account"}
+            <Button type="submit" className="w-full" disabled={isLoadingAuth}>
+              {isLoadingAuth ? "Creating account..." : "Create account"}
             </Button>
           </form>
 
@@ -108,7 +116,7 @@ export default function SignUpPage() {
             variant="outline"
             className="w-full"
             onClick={handleGoogleSignUp}
-            disabled={isLoading}
+            disabled={isLoadingAuth}
           >
             Google
           </Button>

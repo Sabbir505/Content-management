@@ -160,7 +160,7 @@ function ScriptGeneratorContent() {
         parsedScript = output as ScriptData;
       }
 
-      if (parsedScript?.script) {
+      if (parsedScript?.script && Array.isArray(parsedScript.script.sections)) {
         // Build display text from structured sections
         scriptText = parsedScript.script.sections
           .map((s) => `[${s.label}]\n\n${s.content}`)

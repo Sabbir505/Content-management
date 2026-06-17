@@ -464,11 +464,15 @@ function VoiceProfileContent() {
       "Building voice fingerprint...",
     ];
 
+    const mountedRef = { current: true };
+
     for (let i = 0; i < steps.length; i++) {
+      if (!mountedRef.current) return;
       setAnalysisProgress(((i + 1) / steps.length) * 100);
       await new Promise((resolve) => setTimeout(resolve, 600));
     }
 
+    if (!mountedRef.current) return;
     const newFingerprint = analyzeText(text);
     setFingerprint(newFingerprint);
     setIsAnalyzing(false);
