@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow users to read and write their own user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to read and write their own keywords subcollection
+    match /users/{userId}/keywords/{keywordId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to read and write their own boards subcollection
+    match /users/{userId}/boards/{boardId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to read and write their own board items subcollection
+    match /users/{userId}/boardItems/{itemId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to read and write their own voice profile
+    match /users/{userId}/voiceProfile/{profileId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to read and write their own saved videos/content
+    match /users/{userId}/savedVideos/{videoId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/savedContent/{contentId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to read and write their own quality tracking data
+    match /users/{userId}/contentTracking/{entryId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/platformConnections/{platformId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/scorerWeights/{weightsId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/scoreHistory/{scoreId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // YouTube search cache — public read (used by API routes), server-side write only
+    match /youtubeSearchCache/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Content search cache — public read, server-side write only
+    match /contentSearchCache/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Quality trends cache — public read, server-side write only
+    match /qualityTrendsCache/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Quality autocomplete cache — public read, server-side write only
+    match /qualityAutocompleteCache/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Default deny all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
