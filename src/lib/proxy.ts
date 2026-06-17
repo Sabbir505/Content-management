@@ -75,10 +75,10 @@ export async function getProxyUrl(): Promise<string | undefined> {
 
 export async function proxyFetch(url: string, init?: RequestInit & { timeout?: number }): Promise<Response> {
   const timeout = init?.timeout || 15000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   if (!isServer) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
     try {
       const response = await fetch(url, {
         ...init,
@@ -95,12 +95,9 @@ export async function proxyFetch(url: string, init?: RequestInit & { timeout?: n
     }
   }
 
-  const proxyUrl = await getProxyUrl();
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
   try {
     const { ProxyAgent, fetch: undiciFetch } = await import("undici");
+    const proxyUrl = await getProxyUrl();
 
     if (proxyUrl) {
       const dispatcher = new ProxyAgent(proxyUrl);

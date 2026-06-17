@@ -67,6 +67,13 @@ Please provide the full script with section markers.`,
     throw new Error("Failed to generate script from API");
   }
 
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const body = await response.text();
+    console.error("[OpenRouter] Non-JSON response:", body.slice(0, 500));
+    throw new Error(`Expected JSON but received ${contentType}`);
+  }
+
   const data: ApiResponse = await response.json();
   return data.choices[0]?.message?.content || "";
 }
@@ -119,6 +126,13 @@ ${platformPrompts[platform]}`,
 
   if (!response.ok) {
     throw new Error("Failed to generate social post from API");
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const body = await response.text();
+    console.error("[OpenRouter] Non-JSON response:", body.slice(0, 500));
+    throw new Error(`Expected JSON but received ${contentType}`);
   }
 
   const data: ApiResponse = await response.json();
@@ -192,6 +206,13 @@ Return ONLY the JSON object, no markdown formatting.`,
     throw new Error("Failed to generate SEO package from API");
   }
 
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const body = await response.text();
+    console.error("[OpenRouter] Non-JSON response:", body.slice(0, 500));
+    throw new Error(`Expected JSON but received ${contentType}`);
+  }
+
   const data: ApiResponse = await response.json();
   const content = data.choices[0]?.message?.content || "{}";
 
@@ -259,6 +280,13 @@ Please provide only the new ${sectionType} section.`,
 
   if (!response.ok) {
     throw new Error("Failed to regenerate section from API");
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const body = await response.text();
+    console.error("[OpenRouter] Non-JSON response:", body.slice(0, 500));
+    throw new Error(`Expected JSON but received ${contentType}`);
   }
 
   const data: ApiResponse = await response.json();

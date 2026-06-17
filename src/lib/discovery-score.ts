@@ -22,7 +22,7 @@ function normalizeSourceScore(source: string, rawScore: number): number {
 
   // Logarithmic normalization: ln(score + 1) / ln(max + 1) * 100
   const normalized = (Math.log(rawScore + 1) / Math.log(baseline.typicalMax + 1)) * 100;
-  return Math.min(Math.max(normalized, 0), 100);
+  return safeNumber(Math.min(Math.max(normalized, 0), 100));
 }
 
 /**
@@ -35,12 +35,19 @@ function getAgeHours(publishedAt: string): number {
 }
 
 /**
+ * Ensure a number is finite, returning a default if not.
+ */
+function safeNumber(value: number, defaultValue: number = 0): number {
+  return Number.isFinite(value) ? value : defaultValue;
+}
+
+/**
  * Calculate recency boost using exponential decay.
  * @param ageHours - Age in hours
  * @param halfLifeHours - Half-life in hours (default: 24h for articles)
  */
 function calculateRecencyBoost(ageHours: number, halfLifeHours: number = 24): number {
-  return Math.exp(-ageHours / halfLifeHours);
+  return safeNumber(Math.exp(-ageHours / halfLifeHours));
 }
 
 /**
@@ -48,7 +55,7 @@ function calculateRecencyBoost(ageHours: number, halfLifeHours: number = 24): nu
  */
 function calculateVelocityScore(normalizedScore: number, ageHours: number): number {
   const velocity = normalizedScore / ageHours;
-  return Math.min(Math.log10(velocity * 10 + 1) * 25, 100);
+  return safeNumber(Math.min(Math.log10(velocity * 10 + 1) * 25, 100));
 }
 
 /**
@@ -71,7 +78,7 @@ function calculateEngagementQuality(
   // Boost for sources with naturally lower comment ratios (Reddit)
   const sourceMultiplier = source === "reddit" ? 1.5 : 1.0;
 
-  return Math.min(qualityScore * sourceMultiplier, 100);
+  return safeNumber(Math.min(qualityScore * sourceMultiplier, 100));
 }
 
 /**
@@ -109,7 +116,8 @@ export function calculateContentDiscoveryScore(item: ContentItem): number {
     popularityScore * 0.2 +
     recencyBoost * 0.15;
 
-  return Math.round(discoveryScore * 10) / 10; // Round to 1 decimal
+  const result = Math.round(discoveryScore * 10) / 10;
+  return Number.isFinite(result) ? result : 0;
 }
 
 /**
@@ -148,7 +156,8 @@ export function calculateVideoDiscoveryScore(video: VideoWithOutlier): number {
     velocityScore * 0.25 +
     recencyBoost * 0.15;
 
-  return Math.round(discoveryScore * 10) / 10; // Round to 1 decimal
+  const result = Math.round(discoveryScore * 10) / 10;
+  return Number.isFinite(result) ? result : 0;
 }
 
 /**

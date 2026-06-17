@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { Navbar } from "@/components/navbar";
+import { AuthProvider } from "@/components/auth-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,8 +20,6 @@ export const metadata: Metadata = {
   description:
     "Find viral YouTube content, understand its structure, and produce your own version with AI-powered script generation, social posts, and SEO optimization.",
 };
-
-import { AuthProvider } from "@/components/auth-provider";
 
 export default function RootLayout({
   children,

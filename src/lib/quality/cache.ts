@@ -3,6 +3,7 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
+const MAX_SIZE = 1000;
 const store = new Map<string, CacheEntry<unknown>>();
 
 export function get<T>(key: string): T | null {
@@ -12,10 +13,24 @@ export function get<T>(key: string): T | null {
     store.delete(key);
     return null;
   }
+  // Move to end to mark as recently used (LRU)
+  store.delete(key);
+  store.set(key, entry);
   return entry.data as T;
 }
 
 export function set<T>(key: string, data: T, ttlMs: number): void {
+  // Remove existing key to update insertion order
+  if (store.has(key)) {
+    store.delete(key);
+  }
+  // Evict oldest entries if at capacity
+  while (store.size >= MAX_SIZE) {
+    const firstKey = store.keys().next().value;
+    if (firstKey !== undefined) {
+      store.delete(firstKey);
+    }
+  }
   store.set(key, {
     data,
     expiresAt: Date.now() + ttlMs,

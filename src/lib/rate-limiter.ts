@@ -61,44 +61,59 @@ class RateLimiter {
   private lastRequestTime: Map<string, number> = new Map();
   private activeRequests: Map<string, number> = new Map();
   private queues: Map<string, QueuedTask<unknown>[]> = new Map();
+  private processing: Map<string, boolean> = new Map();
 
   private getConfig(source: string): RateLimitConfig {
     return DEFAULT_CONFIGS[source] || DEFAULT_CONFIGS.default;
   }
 
   private async processQueue(source: string): Promise<void> {
-    const queue = this.queues.get(source);
-    if (!queue || queue.length === 0) return;
-
-    const config = this.getConfig(source);
-    const currentActive = this.activeRequests.get(source) || 0;
-
-    if (currentActive >= config.maxConcurrent) return;
-
-    const task = queue.shift();
-    if (!task) return;
-
-    this.activeRequests.set(source, currentActive + 1);
-
-    const now = Date.now();
-    const lastRequest = this.lastRequestTime.get(source) || 0;
-    const delayNeeded = Math.max(0, lastRequest + config.minDelayMs - now);
-
-    if (delayNeeded > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delayNeeded));
-    }
-
-    this.lastRequestTime.set(source, Date.now());
+    // Prevent concurrent processing of the same queue
+    if (this.processing.get(source)) return;
+    this.processing.set(source, true);
 
     try {
-      const result = await task.execute();
-      task.resolve(result);
-    } catch (error) {
-      task.reject(error);
+      while (true) {
+        const queue = this.queues.get(source);
+        if (!queue || queue.length === 0) break;
+
+        const config = this.getConfig(source);
+        const currentActive = this.activeRequests.get(source) || 0;
+
+        if (currentActive >= config.maxConcurrent) break;
+
+        const task = queue.shift();
+        if (!task) break;
+
+        this.activeRequests.set(source, currentActive + 1);
+
+        const now = Date.now();
+        const lastRequest = this.lastRequestTime.get(source) || 0;
+        const delayNeeded = Math.max(0, lastRequest + config.minDelayMs - now);
+
+        if (delayNeeded > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delayNeeded));
+        }
+
+        this.lastRequestTime.set(source, Date.now());
+
+        try {
+          const result = await task.execute();
+          task.resolve(result);
+        } catch (error) {
+          task.reject(error);
+        } finally {
+          const newActive = (this.activeRequests.get(source) || 0) - 1;
+          this.activeRequests.set(source, Math.max(0, newActive));
+        }
+      }
     } finally {
-      const newActive = (this.activeRequests.get(source) || 0) - 1;
-      this.activeRequests.set(source, Math.max(0, newActive));
-      setTimeout(() => this.processQueue(source), 0);
+      this.processing.set(source, false);
+      // Schedule next queue processing in case more tasks were added
+      const queue = this.queues.get(source);
+      if (queue && queue.length > 0) {
+        setTimeout(() => this.processQueue(source), 0);
+      }
     }
   }
 

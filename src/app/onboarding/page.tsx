@@ -80,15 +80,15 @@ export default function OnboardingPage() {
           onboardingComplete: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          subscriptionTier: "starter",
+         Tier: "starter",
           creditsUsed: 0,
           creditsLimit: 300,
         });
+        router.push("/discover");
     } catch (error) {
       console.error("Error saving onboarding data:", error);
     } finally {
       setIsLoading(false);
-      router.push("/discover");
     }
   }
 
