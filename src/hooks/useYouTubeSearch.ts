@@ -29,7 +29,7 @@ export function useYouTubeSearch({
 
   return useQuery<YouTubeSearchResult, YouTubeSearchError>({
     queryKey: ["youtubeSearch", query, niche, timeRange, language],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!query) {
         return {
           query: "",
@@ -46,7 +46,7 @@ export function useYouTubeSearch({
         language,
       });
 
-      const response = await fetch(`/api/youtube/search?${params}`);
+      const response = await fetch(`/api/youtube/search?${params}`, { signal });
       const result = await response.json();
 
       if (!response.ok) {

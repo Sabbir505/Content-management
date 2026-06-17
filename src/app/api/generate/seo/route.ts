@@ -296,6 +296,13 @@ export async function POST(request: NextRequest) {
       secondaryKeywords,
     } = parsed.data;
 
+    if (!videoTitle.trim()) {
+      return NextResponse.json(
+        { success: false, error: "Video title is required" },
+        { status: 400 }
+      );
+    }
+
     // Layer 1: Data Grounding — enrich with real search data
     const groundingContext = await enrichGenerationContext(
       topic || videoTitle,

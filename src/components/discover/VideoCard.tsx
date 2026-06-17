@@ -58,7 +58,7 @@ export const VideoCard = React.memo(function VideoCard({ video, onSave }: VideoC
         <div className="relative h-48 w-full">
           <Image
             src={video.thumbnail}
-            alt={video.title}
+            alt={video.title || "Video thumbnail"}
             fill
             sizes="(max-width: 768px) 100vw, 400px"
             className="object-cover cursor-pointer"
@@ -111,7 +111,7 @@ export const VideoCard = React.memo(function VideoCard({ video, onSave }: VideoC
             <div className="relative h-64 w-full">
               <Image
                 src={video.thumbnail}
-                alt={video.title}
+                alt={video.title || "Video thumbnail"}
                 fill
                 sizes="(max-width: 768px) 100vw, 800px"
                 className="object-cover rounded-lg"

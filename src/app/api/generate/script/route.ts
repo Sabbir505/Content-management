@@ -313,6 +313,13 @@ export async function POST(request: NextRequest) {
       hookType,
     } = parsed.data;
 
+    if (!videoTitle.trim()) {
+      return NextResponse.json(
+        { success: false, error: "Video title is required" },
+        { status: 400 }
+      );
+    }
+
     if (!API_KEY) {
       console.error("KIMI_API_KEY is not set");
       return NextResponse.json({ success: false, error: "API key not configured" }, { status: 500 });

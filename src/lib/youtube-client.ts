@@ -1,13 +1,13 @@
 import { Innertube, UniversalCache } from "youtubei.js";
 
-let client: Innertube | null = null;
+let clientPromise: Promise<Innertube> | null = null;
 
 const CLIENT_TIMEOUT_MS = 15000;
 
 export async function getYouTubeClient(): Promise<Innertube> {
-  if (client) return client;
+  if (clientPromise) return clientPromise;
 
-  client = await Promise.race([
+  clientPromise = Promise.race([
     Innertube.create({
       cache: new UniversalCache(false),
     }),
@@ -16,5 +16,11 @@ export async function getYouTubeClient(): Promise<Innertube> {
     ),
   ]);
 
-  return client;
+  try {
+    const client = await clientPromise;
+    return client;
+  } catch (error) {
+    clientPromise = null;
+    throw error;
+  }
 }

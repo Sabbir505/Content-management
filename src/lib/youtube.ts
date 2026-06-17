@@ -60,47 +60,55 @@ function parseViewCount(viewText: string): number {
 
 function parsePublishedDate(dateText: string): string {
   const now = new Date();
-  const lower = dateText.toLowerCase();
+  const lower = dateText.toLowerCase().trim();
 
-  if (lower.includes("year")) {
-    const match = lower.match(/(\d+)/);
-    const years = match ? parseInt(match[1]) : 1;
-    return new Date(now.getTime() - years * 365 * 24 * 60 * 60 * 1000).toISOString();
+  // Handle empty/undefined dates
+  if (!lower || lower === "") {
+    return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
   }
-  if (lower.includes("month")) {
-    const match = lower.match(/(\d+)/);
-    const months = match ? parseInt(match[1]) : 1;
-    return new Date(now.getTime() - months * 30 * 24 * 60 * 60 * 1000).toISOString();
-  }
-  if (lower.includes("week")) {
-    const match = lower.match(/(\d+)/);
-    const weeks = match ? parseInt(match[1]) : 1;
-    return new Date(now.getTime() - weeks * 7 * 24 * 60 * 60 * 1000).toISOString();
-  }
-  if (lower.includes("day")) {
-    const match = lower.match(/(\d+)/);
-    const days = match ? parseInt(match[1]) : 1;
-    return new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
-  }
-  if (lower.includes("hour")) {
-    const match = lower.match(/(\d+)/);
-    const hours = match ? parseInt(match[1]) : 1;
-    return new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
-  }
-  if (lower.includes("minute")) {
-    const match = lower.match(/(\d+)/);
-    const minutes = match ? parseInt(match[1]) : 1;
-    return new Date(now.getTime() - minutes * 60 * 1000).toISOString();
-  }
-  if (lower.includes("streamed") || lower.includes("live")) {
+
+  // Handle "today" and "yesterday" specifically
+  if (lower === "today" || lower.includes("today")) {
     return now.toISOString();
   }
+  if (lower === "yesterday" || lower.includes("yesterday")) {
+    return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  }
 
+  // Extract number from relative time strings like "2 years ago", "Streamed 3 days ago"
+  const numberMatch = lower.match(/(\d+)/);
+  const number = numberMatch ? parseInt(numberMatch[1], 10) : 1;
+
+  if (lower.includes("year")) {
+    return new Date(now.getTime() - number * 365 * 24 * 60 * 60 * 1000).toISOString();
+  }
+  if (lower.includes("month")) {
+    return new Date(now.getTime() - number * 30 * 24 * 60 * 60 * 1000).toISOString();
+  }
+  if (lower.includes("week")) {
+    return new Date(now.getTime() - number * 7 * 24 * 60 * 60 * 1000).toISOString();
+  }
+  // Only match "day" if it's NOT part of "today" or "yesterday" (already handled above)
+  if (lower.includes("day") && !lower.includes("today") && !lower.includes("yesterday")) {
+    return new Date(now.getTime() - number * 24 * 60 * 60 * 1000).toISOString();
+  }
+  if (lower.includes("hour")) {
+    return new Date(now.getTime() - number * 60 * 60 * 1000).toISOString();
+  }
+  if (lower.includes("minute")) {
+    return new Date(now.getTime() - number * 60 * 1000).toISOString();
+  }
+  if (lower.includes("second")) {
+    return new Date(now.getTime() - number * 1000).toISOString();
+  }
+
+  // Try to parse as an absolute date
   if (!isNaN(Date.parse(dateText))) {
     return new Date(dateText).toISOString();
   }
 
-  return now.toISOString();
+  // Fallback: assume 30 days ago rather than "now" to avoid showing old videos as recent
+  return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function parseQuotaError(error: unknown): YouTubeSearchError {

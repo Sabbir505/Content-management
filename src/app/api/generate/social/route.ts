@@ -478,6 +478,20 @@ export async function POST(request: NextRequest) {
       niche,
     } = parsed.data;
 
+    if (!videoTitle.trim()) {
+      return NextResponse.json(
+        { success: false, error: "Video title is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!platform) {
+      return NextResponse.json(
+        { success: false, error: "Platform is required" },
+        { status: 400 }
+      );
+    }
+
     const outputType: OutputType =
       platform === "x" ? "social_x" : platform === "instagram" ? "social_instagram" : "social_facebook";
 

@@ -147,7 +147,7 @@ export const ContentCard = React.memo(function ContentCard({ item, onSave }: Con
               ) : (
                 <Image
                   src={item.thumbnail}
-                  alt={item.title}
+                  alt={item.title || "Content thumbnail"}
                   fill
                   className="object-contain p-4"
                   unoptimized
@@ -223,7 +223,7 @@ export const ContentCard = React.memo(function ContentCard({ item, onSave }: Con
                   <div className="relative w-full h-64">
                     <Image
                       src={item.thumbnail}
-                      alt={item.title}
+                      alt={item.title || "Content thumbnail"}
                       fill
                       className="object-contain rounded-lg bg-gray-50"
                       unoptimized
