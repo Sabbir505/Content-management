@@ -274,13 +274,16 @@ function DiscoverPageContent() {
     }
   }, [activeWorkspace, user]);
 
-  // Close context menu on click outside
+  // Close context menu and add menu on click outside
   useEffect(() => {
-    if (!cardContextMenu) return;
-    function handleClick() { setCardContextMenu(null); }
+    if (!cardContextMenu && !addMenuOpen) return;
+    function handleClick() {
+      setCardContextMenu(null);
+      setAddMenuOpen(false);
+    }
     document.addEventListener("click", handleClick);
     return () => document.removeEventListener("click", handleClick);
-  }, [cardContextMenu]);
+  }, [cardContextMenu, addMenuOpen]);
 
   async function loadWorkspaceCards(boardId: string) {
     if (!user) return;
@@ -978,7 +981,7 @@ function DiscoverPageContent() {
                 {/* Add Button */}
                 <div className="relative">
                   <button
-                    onClick={() => setAddMenuOpen(!addMenuOpen)}
+                    onClick={(e) => { e.stopPropagation(); setAddMenuOpen(!addMenuOpen); }}
                     className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -986,7 +989,7 @@ function DiscoverPageContent() {
                     </svg>
                   </button>
                   {addMenuOpen && (
-                    <div className="absolute top-full left-0 mt-2 w-56 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl z-50 py-1.5">
+                    <div className="absolute top-full left-0 mt-2 w-56 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl z-50 py-1.5" onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => handleAddCard("link")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
                         <Link2 className="w-4 h-4" />
                         <span>Insert a link</span>
@@ -1030,18 +1033,24 @@ function DiscoverPageContent() {
               ) : workspaceCards.length === 0 ? (
                 <div className="max-w-lg">
                   <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-6">
-                    <h2 className="text-lg font-semibold text-white mb-2">Welcome to your board</h2>
-                    <p className="text-sm text-[#888] mb-4">This is a document, and it lives inside a board.</p>
-                    <h3 className="text-sm font-semibold text-white mb-2">What you can do with boards</h3>
-                    <ul className="text-sm text-[#888] space-y-1 mb-4 list-disc list-inside">
-                      <li>Write content, newsletters, scripts, and more</li>
-                      <li>Add social posts, links, PDFs, and raw ideas</li>
-                      <li>Chat with a single item, or with the whole board at once</li>
-                    </ul>
-                    <h3 className="text-sm font-semibold text-white mb-2">Why boards</h3>
-                    <p className="text-sm text-[#888] mb-4">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
-                    <h3 className="text-sm font-semibold text-white mb-2">Not sure where to start?</h3>
-                    <p className="text-sm text-[#888]">Use boards for the projects you already work on. A simple system: make one board each week and drop that week&apos;s content and ideas inside. It keeps everything organized without much effort.</p>
+                    {activeWorkspace === "my-ideas" ? (
+                      <p className="text-sm text-[#888]">This is a card. Cards are useful for capturing quick ideas or notes. Use this board to capture ideas, paste links, or save social posts.</p>
+                    ) : (
+                      <>
+                        <h2 className="text-lg font-semibold text-white mb-2">Welcome to your board</h2>
+                        <p className="text-sm text-[#888] mb-4">This is a document, and it lives inside a board.</p>
+                        <h3 className="text-sm font-semibold text-white mb-2">What you can do with boards</h3>
+                        <ul className="text-sm text-[#888] space-y-1 mb-4 list-disc list-inside">
+                          <li>Write content, newsletters, scripts, and more</li>
+                          <li>Add social posts, links, PDFs, and raw ideas</li>
+                          <li>Chat with a single item, or with the whole board at once</li>
+                        </ul>
+                        <h3 className="text-sm font-semibold text-white mb-2">Why boards</h3>
+                        <p className="text-sm text-[#888] mb-4">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
+                        <h3 className="text-sm font-semibold text-white mb-2">Not sure where to start?</h3>
+                        <p className="text-sm text-[#888]">Use boards for the projects you already work on. A simple system: make one board each week and drop that week&apos;s content and ideas inside. It keeps everything organized without much effort.</p>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -1071,41 +1080,72 @@ function DiscoverPageContent() {
                 style={{ top: cardContextMenu.y, left: cardContextMenu.x }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h7" /></svg>
-                  <span>Open in Pane</span>
-                  <span className="ml-auto text-xs text-[#666]">Alt ⇧</span>
-                </button>
-                <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 14.583 3 13.303 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                  <span>Chat with</span>
-                </button>
-                <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                  <span>Download</span>
-                </button>
-                <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                  <span>Rename</span>
-                </button>
-                <div className="my-1 border-t border-[#2a2a2a]" />
-                <button onClick={() => handleDuplicateCard(cardContextMenu.card)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                  <span>Duplicate to Board</span>
-                </button>
-                <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-                  <span>Move to Board</span>
-                </button>
-                <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                  <BookOpen className="w-4 h-4" />
-                  <span>Reference on Board</span>
-                </button>
-                <div className="my-1 border-t border-[#2a2a2a]" />
-                <button onClick={() => handleDeleteCard(cardContextMenu.card.id)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-900/20 transition-colors">
-                  <Trash2 className="w-4 h-4" />
-                  <span>Delete</span>
-                </button>
+                {activeWorkspace === "my-ideas" ? (
+                  /* My Ideas context menu */
+                  <>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 14.583 3 13.303 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                      <span>Chat with</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
+                      <span>Color</span>
+                    </button>
+                    <div className="my-1 border-t border-[#2a2a2a]" />
+                    <button onClick={() => handleDuplicateCard(cardContextMenu.card)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                      <span>Duplicate to Board</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                      <span>Move to Board</span>
+                    </button>
+                    <div className="my-1 border-t border-[#2a2a2a]" />
+                    <button onClick={() => handleDeleteCard(cardContextMenu.card.id)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-900/20 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                      <span>Delete</span>
+                    </button>
+                  </>
+                ) : (
+                  /* My First Board context menu */
+                  <>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h7" /></svg>
+                      <span>Open in Pane</span>
+                      <span className="ml-auto text-xs text-[#666]">Alt ⇧</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 14.583 3 13.303 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                      <span>Chat with</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                      <span>Download</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                      <span>Rename</span>
+                    </button>
+                    <div className="my-1 border-t border-[#2a2a2a]" />
+                    <button onClick={() => handleDuplicateCard(cardContextMenu.card)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                      <span>Duplicate to Board</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                      <span>Move to Board</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <BookOpen className="w-4 h-4" />
+                      <span>Reference on Board</span>
+                    </button>
+                    <div className="my-1 border-t border-[#2a2a2a]" />
+                    <button onClick={() => handleDeleteCard(cardContextMenu.card.id)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-900/20 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                      <span>Delete</span>
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
