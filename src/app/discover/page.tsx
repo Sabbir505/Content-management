@@ -17,7 +17,21 @@ import { useRouter } from "next/navigation";
 import { useConnectChannel } from "@/hooks/useConnectChannel";
 import type { YouTubeSearchError } from "@/lib/quality/types";
 import type { TrackedCreator } from "@/types/creator";
-import { Trash2 } from "lucide-react";
+import { Trash2, Link2, FileText, Square, Layers, BookOpen } from "lucide-react";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  getDocs,
+  query,
+  orderBy,
+  serverTimestamp,
+  updateDoc,
+  increment,
+} from "firebase/firestore";
+import type { Board, BoardCard } from "@/types/board";
 
 type ContentType = "videos" | "articles" | "all";
 type SortOption = "discovery" | "trending" | "top" | "recent" | "discussed";
@@ -155,6 +169,13 @@ function DiscoverPageContent() {
   const [isLoadingChatSessions, setIsLoadingChatSessions] = useState(false);
   const [chatDropdownOpen, setChatDropdownOpen] = useState(false);
 
+  // Workspace board state
+  const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
+  const [workspaceCards, setWorkspaceCards] = useState<BoardCard[]>([]);
+  const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [cardContextMenu, setCardContextMenu] = useState<{ card: BoardCard; x: number; y: number } | null>(null);
+
   // Load categories from localStorage after hydration
   useEffect(() => {
     try {
@@ -244,6 +265,147 @@ function DiscoverPageContent() {
     } finally {
       setIsLoadingChatSessions(false);
     }
+  }
+
+  // Load workspace cards when a workspace board is selected
+  useEffect(() => {
+    if (activeWorkspace && user) {
+      loadWorkspaceCards(activeWorkspace);
+    }
+  }, [activeWorkspace, user]);
+
+  // Close context menu on click outside
+  useEffect(() => {
+    if (!cardContextMenu) return;
+    function handleClick() { setCardContextMenu(null); }
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [cardContextMenu]);
+
+  async function loadWorkspaceCards(boardId: string) {
+    if (!user) return;
+    setIsLoadingWorkspace(true);
+    try {
+      // Ensure the board exists
+      const { getDoc } = await import("firebase/firestore");
+      const boardRef = doc(db, "users", user.uid, "boards", boardId);
+      const boardSnap = await getDoc(boardRef);
+      if (!boardSnap.exists()) {
+        const name = boardId === "my-first-board" ? "My First Board" : "My Ideas";
+        await setDoc(boardRef, {
+          name,
+          description: boardId === "my-first-board" ? "Your notes and references" : "Quick ideas and notes",
+          isDefault: boardId === "my-ideas",
+          itemCount: 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      const cardsSnapshot = await getDocs(
+        query(collection(db, "users", user.uid, "boards", boardId, "cards"), orderBy("createdAt", "desc"))
+      );
+      const loaded: BoardCard[] = [];
+      cardsSnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        loaded.push({
+          id: docSnap.id,
+          boardId: data.boardId || boardId,
+          type: data.type || "note",
+          x: data.x ?? 0,
+          y: data.y ?? 0,
+          width: data.width ?? 240,
+          height: data.height ?? 160,
+          title: data.title || "Untitled",
+          content: data.content || "",
+          metadata: data.metadata,
+          thumbnail: data.thumbnail,
+          url: data.url,
+          videoId: data.videoId,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || "",
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || "",
+        });
+      });
+      setWorkspaceCards(loaded);
+    } catch (error) {
+      console.error("Failed to load workspace cards:", error);
+      toast.error("Failed to load board");
+    } finally {
+      setIsLoadingWorkspace(false);
+    }
+  }
+
+  async function handleAddCard(type: "note" | "link" | "document" | "card" | "section" | "reference") {
+    if (!user || !activeWorkspace) return;
+    const cardId = crypto.randomUUID();
+    const titleMap = { note: "New Note", link: "New Link", document: "New Document", card: "New Card", section: "New Section", reference: "New Reference" };
+    const card: BoardCard = {
+      id: cardId,
+      boardId: activeWorkspace,
+      type: "note",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 160,
+      title: titleMap[type],
+      content: "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      await setDoc(doc(db, "users", user.uid, "boards", activeWorkspace, "cards", cardId), {
+        ...card,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, "users", user.uid, "boards", activeWorkspace), {
+        itemCount: increment(1),
+        updatedAt: serverTimestamp(),
+      });
+      setWorkspaceCards((prev) => [card, ...prev]);
+      toast.success(`${titleMap[type]} created`);
+    } catch {
+      toast.error("Failed to create item");
+    }
+    setAddMenuOpen(false);
+  }
+
+  async function handleDeleteCard(cardId: string) {
+    if (!user || !activeWorkspace) return;
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "boards", activeWorkspace, "cards", cardId));
+      await updateDoc(doc(db, "users", user.uid, "boards", activeWorkspace), {
+        itemCount: increment(-1),
+        updatedAt: serverTimestamp(),
+      });
+      setWorkspaceCards((prev) => prev.filter((c) => c.id !== cardId));
+      toast.success("Card deleted");
+    } catch {
+      toast.error("Failed to delete card");
+    }
+    setCardContextMenu(null);
+  }
+
+  async function handleDuplicateCard(card: BoardCard) {
+    if (!user || !activeWorkspace) return;
+    const newId = crypto.randomUUID();
+    const newCard = { ...card, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    try {
+      await setDoc(doc(db, "users", user.uid, "boards", activeWorkspace, "cards", newId), {
+        ...newCard,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, "users", user.uid, "boards", activeWorkspace), {
+        itemCount: increment(1),
+        updatedAt: serverTimestamp(),
+      });
+      setWorkspaceCards((prev) => [newCard, ...prev]);
+      toast.success("Card duplicated");
+    } catch {
+      toast.error("Failed to duplicate card");
+    }
+    setCardContextMenu(null);
   }
 
   // Load tracked creators when on creators tab
@@ -723,7 +885,7 @@ function DiscoverPageContent() {
 
         <div className="flex-1 overflow-y-auto px-3 space-y-1">
           <SidebarItem icon="home" label="Home" onClick={() => router.push("/")} />
-          <SidebarItem icon="research" label="Research" active onClick={() => {}} />
+          <SidebarItem icon="research" label="Research" active={!activeWorkspace} onClick={() => setActiveWorkspace(null)} />
           <SidebarItem icon="menu" label="Menu" onClick={() => {}} />
 
           <div className="pt-4 pb-2">
@@ -784,8 +946,8 @@ function DiscoverPageContent() {
           <div className="pt-4 pb-2">
             <p className="text-xs text-[#666] px-3 uppercase tracking-wider font-medium">Workspace</p>
           </div>
-          <SidebarItem icon="board" label="My First Board" onClick={() => router.push("/boards")} />
-          <SidebarItem icon="board" label="My Ideas" onClick={() => router.push("/boards?board=ideas")} />
+          <SidebarItem icon="board" label="My First Board" active={activeWorkspace === "my-first-board"} onClick={() => { setActiveWorkspace("my-first-board"); setResearchTab("discover"); }} />
+          <SidebarItem icon="board" label="My Ideas" active={activeWorkspace === "my-ideas"} onClick={() => { setActiveWorkspace("my-ideas"); setResearchTab("discover"); }} />
         </div>
 
         <div className="p-3 border-t border-[#1a1a1a] space-y-1">
@@ -804,6 +966,151 @@ function DiscoverPageContent() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto">
+        {activeWorkspace ? (
+          /* Workspace Board View */
+          <div className="flex-1 flex flex-col h-full">
+            {/* Board Header */}
+            <div className="sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-sm border-b border-[#1a1a1a] px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-semibold text-white">
+                  {activeWorkspace === "my-first-board" ? "My First Board" : "My Ideas"}
+                </h1>
+                {/* Add Button */}
+                <div className="relative">
+                  <button
+                    onClick={() => setAddMenuOpen(!addMenuOpen)}
+                    className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                  {addMenuOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-56 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl z-50 py-1.5">
+                      <button onClick={() => handleAddCard("link")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                        <Link2 className="w-4 h-4" />
+                        <span>Insert a link</span>
+                        <span className="ml-auto text-xs text-[#666]">⇧ L</span>
+                      </button>
+                      <button onClick={() => handleAddCard("document")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                        <FileText className="w-4 h-4" />
+                        <span>Create a document</span>
+                        <span className="ml-auto text-xs text-[#666]">D</span>
+                      </button>
+                      <button onClick={() => handleAddCard("card")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                        <Square className="w-4 h-4" />
+                        <span>Create a card</span>
+                        <span className="ml-auto text-xs text-[#666]">C</span>
+                      </button>
+                      <button onClick={() => handleAddCard("section")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                        <Layers className="w-4 h-4" />
+                        <span>Add section</span>
+                        <span className="ml-auto text-xs text-[#666]">S</span>
+                      </button>
+                      <button onClick={() => handleAddCard("reference")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                        <BookOpen className="w-4 h-4" />
+                        <span>Add reference</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors">Chat</button>
+                <button className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors">Share</button>
+              </div>
+            </div>
+
+            {/* Board Content */}
+            <div className="flex-1 p-6">
+              {isLoadingWorkspace ? (
+                <div className="flex items-center justify-center py-20">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+                </div>
+              ) : workspaceCards.length === 0 ? (
+                <div className="max-w-lg">
+                  <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-6">
+                    <h2 className="text-lg font-semibold text-white mb-2">Welcome to your board</h2>
+                    <p className="text-sm text-[#888] mb-4">This is a document, and it lives inside a board.</p>
+                    <h3 className="text-sm font-semibold text-white mb-2">What you can do with boards</h3>
+                    <ul className="text-sm text-[#888] space-y-1 mb-4 list-disc list-inside">
+                      <li>Write content, newsletters, scripts, and more</li>
+                      <li>Add social posts, links, PDFs, and raw ideas</li>
+                      <li>Chat with a single item, or with the whole board at once</li>
+                    </ul>
+                    <h3 className="text-sm font-semibold text-white mb-2">Why boards</h3>
+                    <p className="text-sm text-[#888] mb-4">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
+                    <h3 className="text-sm font-semibold text-white mb-2">Not sure where to start?</h3>
+                    <p className="text-sm text-[#888]">Use boards for the projects you already work on. A simple system: make one board each week and drop that week&apos;s content and ideas inside. It keeps everything organized without much effort.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {workspaceCards.map((card) => (
+                    <div
+                      key={card.id}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setCardContextMenu({ card, x: e.clientX, y: e.clientY });
+                      }}
+                      className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 hover:border-[#3a3a3a] transition-colors cursor-pointer"
+                    >
+                      <h3 className="text-sm font-medium text-white">{card.title}</h3>
+                      {card.content && <p className="text-xs text-[#888] mt-1 line-clamp-2">{card.content}</p>}
+                      {card.url && <p className="text-xs text-blue-400 mt-1 truncate">{card.url}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Card Context Menu */}
+            {cardContextMenu && (
+              <div
+                className="fixed z-50 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl py-1.5 w-56"
+                style={{ top: cardContextMenu.y, left: cardContextMenu.x }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h7" /></svg>
+                  <span>Open in Pane</span>
+                  <span className="ml-auto text-xs text-[#666]">Alt ⇧</span>
+                </button>
+                <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 14.583 3 13.303 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                  <span>Chat with</span>
+                </button>
+                <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                  <span>Download</span>
+                </button>
+                <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                  <span>Rename</span>
+                </button>
+                <div className="my-1 border-t border-[#2a2a2a]" />
+                <button onClick={() => handleDuplicateCard(cardContextMenu.card)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                  <span>Duplicate to Board</span>
+                </button>
+                <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                  <span>Move to Board</span>
+                </button>
+                <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                  <BookOpen className="w-4 h-4" />
+                  <span>Reference on Board</span>
+                </button>
+                <div className="my-1 border-t border-[#2a2a2a]" />
+                <button onClick={() => handleDeleteCard(cardContextMenu.card.id)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-900/20 transition-colors">
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete</span>
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+        <>
         {/* Top Search Bar */}
         <div className="sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-sm border-b border-[#1a1a1a] px-6 py-3">
           <div className="flex items-center gap-3">
@@ -1359,6 +1666,8 @@ function DiscoverPageContent() {
             <ChannelTabContent />
           )}
         </div>
+        </>
+        )}
       </div>
 
       <BoardPicker
