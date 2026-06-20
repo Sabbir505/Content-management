@@ -40,47 +40,55 @@ function parseViewCount(viewText: string): number {
 
 function parsePublishedDate(dateText: string): string {
   const now = new Date();
-  const lower = dateText.toLowerCase();
+  const lower = dateText.toLowerCase().trim();
 
-  if (lower.includes("year")) {
-    const match = lower.match(/(\d+)/);
-    const years = match ? parseInt(match[1]) : 1;
-    return new Date(now.getTime() - years * 365 * 24 * 60 * 60 * 1000).toISOString();
+  // Handle empty/undefined dates
+  if (!lower || lower === "") {
+    return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
   }
-  if (lower.includes("month")) {
-    const match = lower.match(/(\d+)/);
-    const months = match ? parseInt(match[1]) : 1;
-    return new Date(now.getTime() - months * 30 * 24 * 60 * 60 * 1000).toISOString();
-  }
-  if (lower.includes("week")) {
-    const match = lower.match(/(\d+)/);
-    const weeks = match ? parseInt(match[1]) : 1;
-    return new Date(now.getTime() - weeks * 7 * 24 * 60 * 60 * 1000).toISOString();
-  }
-  if (lower.includes("day")) {
-    const match = lower.match(/(\d+)/);
-    const days = match ? parseInt(match[1]) : 1;
-    return new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
-  }
-  if (lower.includes("hour")) {
-    const match = lower.match(/(\d+)/);
-    const hours = match ? parseInt(match[1]) : 1;
-    return new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
-  }
-  if (lower.includes("minute")) {
-    const match = lower.match(/(\d+)/);
-    const minutes = match ? parseInt(match[1]) : 1;
-    return new Date(now.getTime() - minutes * 60 * 1000).toISOString();
-  }
-  if (lower.includes("streamed") || lower.includes("live")) {
+
+  // Handle "today" and "yesterday" specifically
+  if (lower === "today" || lower.includes("today")) {
     return now.toISOString();
   }
+  if (lower === "yesterday" || lower.includes("yesterday")) {
+    return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  }
 
+  // Extract number from relative time strings like "2 years ago", "Streamed 3 days ago"
+  const numberMatch = lower.match(/(\d+)/);
+  const number = numberMatch ? parseInt(numberMatch[1], 10) : 1;
+
+  if (lower.includes("year")) {
+    return new Date(now.getTime() - number * 365 * 24 * 60 * 60 * 1000).toISOString();
+  }
+  if (lower.includes("month")) {
+    return new Date(now.getTime() - number * 30 * 24 * 60 * 60 * 1000).toISOString();
+  }
+  if (lower.includes("week")) {
+    return new Date(now.getTime() - number * 7 * 24 * 60 * 60 * 1000).toISOString();
+  }
+  // Only match "day" if it's NOT part of "today" or "yesterday" (already handled above)
+  if (lower.includes("day") && !lower.includes("today") && !lower.includes("yesterday")) {
+    return new Date(now.getTime() - number * 24 * 60 * 60 * 1000).toISOString();
+  }
+  if (lower.includes("hour")) {
+    return new Date(now.getTime() - number * 60 * 60 * 1000).toISOString();
+  }
+  if (lower.includes("minute")) {
+    return new Date(now.getTime() - number * 60 * 1000).toISOString();
+  }
+  if (lower.includes("second")) {
+    return new Date(now.getTime() - number * 1000).toISOString();
+  }
+
+  // Try to parse as an absolute date
   if (!isNaN(Date.parse(dateText))) {
     return new Date(dateText).toISOString();
   }
 
-  return now.toISOString();
+  // Fallback: assume 30 days ago rather than "now" to avoid showing old videos as recent
+  return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function extractVideoDataFromHtml(html: string): VideoWithOutlier[] {
@@ -109,8 +117,10 @@ function extractVideoDataFromHtml(html: string): VideoWithOutlier[] {
                 const publishedText = videoRenderer?.publishedTimeText?.simpleText || "";
                 const durationText = videoRenderer?.lengthText?.simpleText || "0:00";
                 const durationSeconds = parseDuration(durationText);
-                const thumbnail = videoRenderer?.thumbnail?.thumbnails?.[0]?.url || "";
-                const description = videoRenderer?.detailedMetadataSnippets?.[0]?.snippetText?.runs?.[0]?.text || "";
+                const description = videoRenderer?.detailedMetadataSnippets?.[0]?.snippetText?.runs?.[0]?.text ||
+                                      videoRenderer?.descriptionSnippet?.runs?.[0]?.text || "";
+                const thumbnail = videoRenderer?.thumbnail?.thumbnails?.[videoRenderer.thumbnail.thumbnails.length - 1]?.url ||
+                                    videoRenderer?.thumbnail?.thumbnails?.[0]?.url || "";
 
                 // Skip shorts (under 60 seconds)
                 if (durationSeconds < 60) continue;
@@ -152,6 +162,22 @@ function extractVideoDataFromHtml(html: string): VideoWithOutlier[] {
   return videos;
 }
 
+function getTimeRangeCutoff(timeRange: "day" | "week" | "month" | "year"): Date {
+  const now = new Date();
+  switch (timeRange) {
+    case "day":
+      return new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    case "week":
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    case "month":
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    case "year":
+      return new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+    default:
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  }
+}
+
 export async function searchYouTubeVideosScrape(
   query: string,
   filters: SearchFilters
@@ -174,11 +200,18 @@ export async function searchYouTubeVideosScrape(
     }
 
     const html = await response.text();
-    const videos = extractVideoDataFromHtml(html);
+    const allVideos = extractVideoDataFromHtml(html);
+
+    // Filter videos by time range based on parsed published date
+    const cutoffDate = getTimeRangeCutoff(filters.timeRange);
+    const filteredVideos = allVideos.filter((video) => {
+      const publishedDate = new Date(video.publishedAt).getTime();
+      return publishedDate >= cutoffDate.getTime();
+    });
 
     return {
       query,
-      videos,
+      videos: filteredVideos,
       fromCache: false,
       fetchedAt: new Date().toISOString(),
     };

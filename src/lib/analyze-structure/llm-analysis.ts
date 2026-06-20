@@ -7,6 +7,7 @@ import type {
   VideoSourceSpecific,
   ArticleSourceSpecific,
 } from "./types";
+import { getProxyUrl } from "../proxy";
 
 const API_URL = process.env.KIMI_API_ENDPOINT || "https://ai2.18.show/v1/chat/completions";
 const API_KEY = process.env.KIMI_API_KEY;
@@ -22,6 +23,7 @@ interface ApiResponse {
     message: {
       content: string;
     };
+    finish_reason?: string;
   }[];
 }
 
@@ -30,7 +32,42 @@ async function callLLM(messages: ApiMessage[], temperature: number = 0.3): Promi
     throw new Error("KIMI_API_KEY not configured");
   }
 
-  const response = await fetch(API_URL, {
+  // The Kimi endpoint is directly reachable in most environments; the local proxy
+  // auto-detected by getProxyUrl() is flaky for this host and causes ECONNRESET /
+  // connect timeouts. Only route through the proxy if explicitly requested.
+  const useProxy = process.env.KIMI_USE_PROXY === "true";
+  const proxyUrl = useProxy ? await getProxyUrl() : undefined;
+  let fetchFn: typeof fetch = fetch;
+  if (proxyUrl) {
+    const { ProxyAgent, fetch: undiciFetch } = await import("undici");
+    const dispatcher = new ProxyAgent({
+      uri: proxyUrl,
+      connectTimeout: 30000,
+    });
+    fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      let url: string;
+      let options: RequestInit = {};
+      if (typeof input === "string") {
+        url = input;
+      } else if (input instanceof URL) {
+        url = input.toString();
+      } else {
+        url = input.url;
+        options = { method: input.method, headers: input.headers, body: input.body };
+      }
+      if (init) {
+        options = { ...options, ...init };
+        if (init.headers) {
+          const merged = new Headers(options.headers);
+          new Headers(init.headers).forEach((v, k) => merged.set(k, v));
+          options.headers = merged;
+        }
+      }
+      return undiciFetch(url, { ...options, dispatcher } as never) as unknown as Response;
+    }) as typeof fetch;
+  }
+
+  const response = await fetchFn(API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -40,9 +77,9 @@ async function callLLM(messages: ApiMessage[], temperature: number = 0.3): Promi
       model: MODEL,
       messages,
       temperature,
-      max_tokens: 2500,
+      max_tokens: 6000,
     }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(180000),
   });
 
   if (!response.ok) {
@@ -50,7 +87,11 @@ async function callLLM(messages: ApiMessage[], temperature: number = 0.3): Promi
   }
 
   const data: ApiResponse = await response.json();
-  return data.choices[0]?.message?.content || "{}";
+  const choice = data.choices[0];
+  if (choice?.finish_reason === "length") {
+    throw new Error("Analysis response was truncated. The transcript or beats may be too long.");
+  }
+  return choice?.message?.content || "{}";
 }
 
 function buildSystemPrompt(): string {
@@ -188,7 +229,9 @@ export function parseStructuralResponse(content: string): StructuralBreakdown {
       throw new Error("Missing structural_breakdown");
     }
     return parsed.structural_breakdown as StructuralBreakdown;
-  } catch {
+  } catch (err) {
+    console.error("[LLM PARSE ERROR]", err instanceof Error ? err.message : err);
+    console.error("[LLM RAW RESPONSE]", content.slice(0, 2000));
     // Return a fallback breakdown if parsing fails
     return {
       hook: {
@@ -232,11 +275,41 @@ export async function analyzeStructureWithLLM(params: {
   readTimeMinutes?: number;
   hadHeaders?: boolean;
   beats: TimedSegment[] | ArticleSegment[];
+  videoMetadata?: {
+    id: string;
+    title: string;
+    channel_title: string;
+    thumbnail_url: string;
+    view_count?: number;
+    published_at?: string;
+  };
+  articleMetadata?: {
+    url: string;
+    title: string;
+    author?: string;
+    published_at?: string;
+  };
 }): Promise<{
   structuralBreakdown: StructuralBreakdown;
   sourceSpecific: {
     video: VideoSourceSpecific | null;
     article: ArticleSourceSpecific | null;
+  };
+  sourceMetadata: {
+    video: {
+      id: string;
+      title: string;
+      channel_title: string;
+      thumbnail_url: string;
+      view_count?: number;
+      published_at?: string;
+    } | null;
+    article: {
+      url: string;
+      title: string;
+      author?: string;
+      published_at?: string;
+    } | null;
   };
 }> {
   // Format beats for the prompt
@@ -289,5 +362,10 @@ export async function analyzeStructureWithLLM(params: {
       : null,
   };
 
-  return { structuralBreakdown, sourceSpecific };
+  const sourceMetadata = {
+    video: params.sourceType === "video" ? params.videoMetadata || null : null,
+    article: params.sourceType === "article" ? params.articleMetadata || null : null,
+  };
+
+  return { structuralBreakdown, sourceSpecific, sourceMetadata };
 }

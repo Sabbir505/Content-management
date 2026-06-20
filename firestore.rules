@@ -16,6 +16,11 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Allow users to read and write items inside their boards
+    match /users/{userId}/boards/{boardId}/items/{itemId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Allow users to read and write their own board items subcollection
     match /users/{userId}/boardItems/{itemId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
@@ -48,6 +53,11 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Allow users to read and write their own drafts
+    match /users/{userId}/drafts/{draftId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // YouTube search cache — public read (used by API routes), server-side write only
     match /youtubeSearchCache/{docId} {
       allow read: if true;
@@ -72,7 +82,30 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Default deny all other collections
+    // Allow users to read and write their own chat sessions
+    match /users/{userId}/chatSessions/{sessionId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to read and write messages inside their chat sessions
+    match /users/{userId}/chatSessions/{sessionId}/messages/{messageId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to read and write cards inside their boards
+    match /users/{userId}/boards/{boardId}/cards/{cardId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to read and write their tracked creators
+    match /users/{userId}/creators/{creatorId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to read and write their quick ideas
+    match /users/{userId}/ideas/{ideaId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
     match /{document=**} {
       allow read, write: if false;
     }

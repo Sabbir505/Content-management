@@ -63,28 +63,45 @@ interface SeoPackage {
   pinned_comment: string;
 }
 
-async function callLLM(messages: ApiMessage[], temperature: number = 0.3): Promise<string> {
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature,
-      max_tokens: 2500,
-    }),
-    signal: AbortSignal.timeout(30000),
-  });
+import { getProxyUrl } from "@/lib/proxy";
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
+async function callLLM(messages: ApiMessage[], temperature: number = 0.3): Promise<string> {
+  if (!API_KEY) {
+    throw new Error("KIMI_API_KEY not configured");
   }
 
-  const data: ApiResponse = await response.json();
-  return data.choices[0]?.message?.content || "{}";
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        temperature,
+        max_tokens: 2500,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      throw new Error(`API error: ${response.status} - ${errorText}`);
+    }
+
+    const data: ApiResponse = await response.json();
+    return data.choices[0]?.message?.content || "{}";
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
 }
 
 function parseSeoResponse(content: string, videoTitle: string, existingTags: string[]): SeoPackage {

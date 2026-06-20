@@ -4,10 +4,27 @@ import { evaluateAndDeliver } from "@/lib/quality/regeneration";
 import { enrichGenerationContext } from "@/lib/quality/grounding/grounding-pipeline";
 import type { ScoredOutput } from "@/lib/quality/types";
 
+const VALID_TONES = [
+  "educational",
+  "entertaining",
+  "motivational",
+  "conversational",
+  "professional",
+  "opinion",
+  "storytelling",
+  "listicle",
+  "documentary",
+  "reaction",
+  "vlog",
+  "review",
+  "tutorial",
+  "challenge",
+] as const;
+
 const scriptSchema = z.object({
   videoTitle: z.string().min(1, "Video title is required"),
   videoDescription: z.string().optional(),
-  tone: z.enum(["educational", "entertaining", "motivational", "conversational", "professional"]).optional(),
+  tone: z.enum(VALID_TONES).optional(),
   userVoice: z.string().optional(),
   voiceProfile: z.object({
     hookStyle: z.string(),
@@ -69,28 +86,43 @@ interface VoiceProfileInput {
 }
 
 async function callLLM(messages: ApiMessage[], temperature: number = 0.7): Promise<string> {
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature,
-      max_tokens: 2500,
-    }),
-    signal: AbortSignal.timeout(30000),
-  });
+  const maxRetries = 2;
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`API error: ${response.status} ${errorText}`);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages,
+          temperature,
+          max_tokens: 2500,
+        }),
+        signal: AbortSignal.timeout(45000),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error: ${response.status} ${errorText}`);
+      }
+
+      const data: ApiResponse = await response.json();
+      return data.choices[0]?.message?.content || "";
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < maxRetries) {
+        // Wait before retrying (exponential backoff)
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
+    }
   }
 
-  const data: ApiResponse = await response.json();
-  return data.choices[0]?.message?.content || "";
+  throw lastError || new Error("LLM call failed after retries");
 }
 
 function parseScriptResponse(content: string): ScriptOutput {
@@ -405,7 +437,8 @@ ${suggestions.map((s) => `- ${s}`).join("\n")}
 
     return NextResponse.json({ success: true, data: scoredOutput });
   } catch (error) {
-    console.error("Script generation error:", error);
-    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
+    console.error("Script generation error:", error instanceof Error ? error.message : error);
+    console.error("Stack:", error instanceof Error ? error.stack : "No stack");
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
   }
 }

@@ -16,7 +16,7 @@ function callPythonScript(input: {
 }): Promise<GoogleTrendsResult> {
   return new Promise((resolve, reject) => {
     const scriptPath = getPythonScriptPath();
-    const python = spawn("python3", [scriptPath], {
+    const python = spawn("python", [scriptPath], {
       stdio: ["pipe", "pipe", "pipe"],
     });
 

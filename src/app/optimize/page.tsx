@@ -1,18 +1,17 @@
 "use client";
 
-import { useState, Suspense, useRef } from "react";
+import { useState, Suspense, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScoreCard } from "@/components/quality/ScoreCard";
 import Image from "next/image";
 import { toast } from "sonner";
-import { getVideoDetails, parseDuration, formatDuration } from "@/lib/youtube";
+import { parseDuration, formatDuration } from "@/lib/youtube";
 import { YouTubeVideo } from "@/types/video";
 import type { ScoredOutput } from "@/lib/quality/types";
 
@@ -81,11 +80,51 @@ function OptimizePageContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isAutoRunning, setIsAutoRunning] = useState(false);
   const [activeTab, setActiveTab] = useState("titles");
   const [selectedTitleIndex, setSelectedTitleIndex] = useState<number | null>(null);
 
-  // AbortController ref for cancelling in-flight requests
+  // AbortController ref for cancelling in-flight generation requests
   const abortControllerRef = useRef<AbortController | null>(null);
+  const autoRunStartedRef = useRef(false);
+
+  async function fetchVideoData(videoId: string): Promise<YouTubeVideo | null> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    try {
+      const response = await fetch(`/api/youtube/video?videoId=${encodeURIComponent(videoId)}`, {
+        signal: controller.signal,
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to fetch video");
+      }
+
+      const data = result.data;
+      return {
+        id: data.id,
+        title: data.title || "",
+        channelTitle: data.channelTitle || "",
+        channelId: data.channelId || "",
+        viewCount: data.viewCount || 0,
+        likeCount: data.likeCount || 0,
+        commentCount: data.commentCount || 0,
+        thumbnail: data.thumbnail || "",
+        publishedAt: data.publishedAt || "",
+        duration: formatDuration(parseDuration(data.duration)),
+        description: data.description || "",
+        tags: data.tags || [],
+      };
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return null;
+      toast.error(error instanceof Error ? error.message : "Failed to fetch video");
+      return null;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
 
   async function handleFetchVideo() {
     const videoId = extractVideoId(url);
@@ -99,44 +138,19 @@ function OptimizePageContent() {
     setSeoPackage(null);
     setSelectedTitleIndex(null);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const videoData = await fetchVideoData(videoId);
+    setIsLoading(false);
 
-    try {
-      const items = await getVideoDetails([videoId]);
-      if (!items || items.length === 0) {
-        throw new Error("Video not found");
-      }
-
-      const item = items[0];
-      const videoData: YouTubeVideo = {
-        id: item.id,
-        title: item.snippet.title || "",
-        channelTitle: item.snippet.channelTitle || "",
-        channelId: item.snippet.channelId || "",
-        viewCount: parseInt(item.statistics.viewCount || "0", 10) || 0,
-        likeCount: parseInt(item.statistics.likeCount || "0", 10) || 0,
-        commentCount: parseInt(item.statistics.commentCount || "0", 10) || 0,
-        thumbnail: item.snippet.thumbnails.medium?.url || "",
-        publishedAt: item.snippet.publishedAt || "",
-        duration: formatDuration(parseDuration(item.contentDetails.duration)),
-        description: item.snippet.description || "",
-        tags: item.snippet.tags || [],
-      };
-
+    if (videoData) {
       setVideo(videoData);
       toast.success("Video fetched successfully!");
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") return;
-      toast.error(error instanceof Error ? error.message : "Failed to fetch video");
-    } finally {
-      clearTimeout(timeoutId);
-      setIsLoading(false);
+      await handleAnalyzeAndOptimize(videoData);
     }
   }
 
-  async function handleAnalyzeAndOptimize() {
-    if (!video) return;
+  async function handleAnalyzeAndOptimize(videoToAnalyze?: YouTubeVideo) {
+    const targetVideo = videoToAnalyze ?? video;
+    if (!targetVideo) return;
 
     // Step 1: Extract transcript
     setIsAnalyzing(true);
@@ -146,7 +160,7 @@ function OptimizePageContent() {
     const transcriptTimeoutId = setTimeout(() => transcriptController.abort(), 15000);
 
     try {
-      const transcriptResponse = await fetch(`/api/youtube/transcript?videoId=${video.id}`, {
+      const transcriptResponse = await fetch(`/api/youtube/transcript?videoId=${targetVideo.id}`, {
         signal: transcriptController.signal,
       });
       const transcriptResult = await transcriptResponse.json();
@@ -175,13 +189,13 @@ function OptimizePageContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          videoTitle: video.title,
-          videoDescription: video.description,
-          existingTags: video.tags,
-          topic: video.title,
+          videoTitle: targetVideo.title,
+          videoDescription: targetVideo.description,
+          existingTags: targetVideo.tags,
+          topic: targetVideo.title,
           niche: "general",
-          primaryKeyword: video.title.split(" ").slice(0, 3).join(" "),
-          secondaryKeywords: video.tags?.slice(0, 5) || [],
+          primaryKeyword: targetVideo.title.split(" ").slice(0, 3).join(" "),
+          secondaryKeywords: targetVideo.tags?.slice(0, 5) || [],
           transcript: transcriptText,
         }),
         signal: abortControllerRef.current.signal,
@@ -203,6 +217,32 @@ function OptimizePageContent() {
       setIsGenerating(false);
     }
   }
+
+  // Auto-run the full pipeline when the page is opened with a videoId in the URL
+  useEffect(() => {
+    if (!initialVideoId || autoRunStartedRef.current) return;
+    autoRunStartedRef.current = true;
+
+    const videoId = initialVideoId;
+
+    async function runPipeline() {
+      setIsAutoRunning(true);
+      setIsLoading(true);
+
+      const videoData = await fetchVideoData(videoId);
+      if (videoData) {
+        setVideo(videoData);
+        setIsLoading(false);
+        await handleAnalyzeAndOptimize(videoData);
+      } else {
+        setIsLoading(false);
+      }
+
+      setIsAutoRunning(false);
+    }
+
+    runPipeline();
+  }, [initialVideoId]);
 
   function handleCopy(text: string) {
     navigator.clipboard.writeText(text);
@@ -231,6 +271,8 @@ function OptimizePageContent() {
     { label: "Building SEO package", icon: "✨" },
   ];
 
+  const showVideoPreview = video && !isLoading && !isAnalyzing && !isGenerating && !isAutoRunning && !seoPackage;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -251,8 +293,8 @@ function OptimizePageContent() {
                   onKeyDown={(e) => e.key === "Enter" && handleFetchVideo()}
                   className="flex-1"
                 />
-                <Button onClick={handleFetchVideo} disabled={isLoading}>
-                  {isLoading ? "Fetching..." : "Analyze & Optimize"}
+                <Button onClick={handleFetchVideo} disabled={isLoading || isAnalyzing || isGenerating || isAutoRunning}>
+                  {isAnalyzing ? "Analyzing..." : isLoading ? "Fetching..." : "Analyze & Optimize"}
                 </Button>
               </div>
             </CardContent>
@@ -291,7 +333,7 @@ function OptimizePageContent() {
             </Card>
           )}
 
-          {video && !isLoading && !isAnalyzing && (
+          {showVideoPreview && (
             <Card>
               <CardContent className="p-6">
                 <div className="flex gap-6">
@@ -325,7 +367,7 @@ function OptimizePageContent() {
 
                 <div className="mt-6 pt-6 border-t">
                   <Button
-                    onClick={handleAnalyzeAndOptimize}
+                    onClick={() => handleAnalyzeAndOptimize()}
                     disabled={isGenerating || isAnalyzing}
                     className="w-full"
                   >

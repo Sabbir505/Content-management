@@ -75,12 +75,32 @@ export interface ArticleSourceSpecific {
   had_headers: boolean;
 }
 
+export interface VideoMetadata {
+  id: string;
+  title: string;
+  channel_title: string;
+  thumbnail_url: string;
+  view_count?: number;
+  published_at?: string;
+}
+
+export interface ArticleMetadata {
+  url: string;
+  title: string;
+  author?: string;
+  published_at?: string;
+}
+
 export interface AnalyzeResult {
   source_type: SourceType;
   structural_breakdown: StructuralBreakdown;
   source_specific: {
     video: VideoSourceSpecific | null;
     article: ArticleSourceSpecific | null;
+  };
+  source_metadata: {
+    video: VideoMetadata | null;
+    article: ArticleMetadata | null;
   };
 }
 

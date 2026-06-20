@@ -1,5 +1,6 @@
 import { getVideoDetails } from "../youtube";
 import { YoutubeTranscript } from "youtube-transcript";
+import { getProxyUrl } from "../proxy";
 import type {
   TimedSegment,
   TranscriptQuality,
@@ -19,8 +20,43 @@ export function parseISODuration(duration: string): number {
 // Fetch transcript directly using youtube-transcript library
 export async function fetchTranscript(videoId: string): Promise<TimedSegment[]> {
   try {
+    const proxyUrl = await getProxyUrl();
+
+    let customFetch: typeof fetch;
+    if (proxyUrl) {
+      const { ProxyAgent, fetch: undiciFetch } = await import("undici");
+      const dispatcher = new ProxyAgent({
+        uri: proxyUrl,
+        connectTimeout: 30000,
+      });
+      customFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        let url: string;
+        let options: RequestInit = {};
+        if (typeof input === "string") {
+          url = input;
+        } else if (input instanceof URL) {
+          url = input.toString();
+        } else {
+          url = input.url;
+          options = { method: input.method, headers: input.headers, body: input.body };
+        }
+        if (init) {
+          options = { ...options, ...init };
+          if (init.headers) {
+            const merged = new Headers(options.headers);
+            new Headers(init.headers).forEach((v, k) => merged.set(k, v));
+            options.headers = merged;
+          }
+        }
+        return undiciFetch(url, { ...options, dispatcher } as never) as unknown as Response;
+      }) as typeof fetch;
+    } else {
+      customFetch = fetch;
+    }
+
     const transcript = await YoutubeTranscript.fetchTranscript(videoId, {
       lang: "en",
+      fetch: customFetch,
     });
 
     if (!transcript || transcript.length === 0) {
@@ -140,6 +176,14 @@ export async function analyzeVideo(videoId: string): Promise<{
   beats: TimedSegment[];
   transcriptQuality: TranscriptQuality;
   durationSeconds: number;
+  metadata: {
+    id: string;
+    title: string;
+    channel_title: string;
+    thumbnail_url: string;
+    view_count?: number;
+    published_at?: string;
+  };
 }> {
   // Fetch metadata
   const items = await getVideoDetails([videoId]);
@@ -161,5 +205,13 @@ export async function analyzeVideo(videoId: string): Promise<{
     beats,
     transcriptQuality,
     durationSeconds,
+    metadata: {
+      id: videoId,
+      title: item.snippet.title || "Unknown",
+      channel_title: item.snippet.channelTitle || "Unknown Channel",
+      thumbnail_url: item.snippet.thumbnails?.medium?.url || "",
+      view_count: parseInt(item.statistics?.viewCount || "0", 10) || undefined,
+      published_at: item.snippet.publishedAt,
+    },
   };
 }

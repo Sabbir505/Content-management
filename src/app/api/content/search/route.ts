@@ -25,6 +25,11 @@ export async function GET(request: NextRequest) {
     const query = searchParams.get("query");
     const type = searchParams.get("type") || "search"; // "search" or "trending"
     const sources = searchParams.get("sources")?.split(",") || undefined;
+    const rawTimeRange = searchParams.get("timeRange") || "week";
+    const validTimeRanges = ["day", "week", "month", "year"] as const;
+    const timeRange = validTimeRanges.includes(rawTimeRange as typeof validTimeRanges[number])
+      ? (rawTimeRange as "day" | "week" | "month" | "year")
+      : "week";
     let limit = parseInt(searchParams.get("limit") || "20", 10);
     if (isNaN(limit)) limit = 20;
 
@@ -53,6 +58,7 @@ export async function GET(request: NextRequest) {
         query,
         sources: sources as any,
         limit,
+        timeRange,
         bypassCache: searchParams.get("fresh") === "true",
       }),
       25000,

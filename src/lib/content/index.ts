@@ -15,6 +15,23 @@ export interface ContentSearchOptions {
   subreddit?: string;
   devToTag?: string;
   bypassCache?: boolean;
+  timeRange?: "day" | "week" | "month" | "year";
+}
+
+function getTimeRangeCutoff(timeRange: "day" | "week" | "month" | "year"): Date {
+  const now = new Date();
+  switch (timeRange) {
+    case "day":
+      return new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    case "week":
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    case "month":
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    case "year":
+      return new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+    default:
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  }
 }
 
 const MEMORY_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
@@ -43,7 +60,7 @@ function withSourceTimeout<T>(promise: Promise<T>, ms: number, source: string): 
 }
 
 export async function searchContent(options: ContentSearchOptions): Promise<ContentSearchResult[]> {
-  const { query, sources = ["hackernews", "reddit", "devto", "googlenews"], limit = 20 } = options;
+  const { query, sources = ["hackernews", "reddit", "devto", "googlenews"], limit = 20, timeRange = "week" } = options;
 
   // Check in-memory cache (skip if fresh requested via bypass)
   const bypassCache = options.bypassCache === true;
@@ -128,6 +145,17 @@ export async function searchContent(options: ContentSearchOptions): Promise<Cont
     if (result.status === "fulfilled") {
       results.push(result.value);
       console.log(`[Content] ${result.value.source} returned ${result.value.items.length} items for "${query}"`);
+    }
+  }
+
+  // Filter results by time range
+  const cutoffDate = getTimeRangeCutoff(timeRange);
+  for (const result of results) {
+    if (result.items) {
+      result.items = result.items.filter((item) => {
+        const itemDate = new Date(item.publishedAt).getTime();
+        return itemDate >= cutoffDate.getTime();
+      });
     }
   }
 

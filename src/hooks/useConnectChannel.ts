@@ -185,6 +185,13 @@ export function useConnectChannel(): UseConnectChannelReturn {
     }
   }, [user]);
 
+  // Fetch actual channel stats on mount if we have a channel ID
+  useEffect(() => {
+    if (profile?.youtubeChannelId && isConnected) {
+      refreshChannel();
+    }
+  }, [profile?.youtubeChannelId, isConnected, refreshChannel]);
+
   return {
     channel,
     isConnecting,

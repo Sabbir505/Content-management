@@ -191,6 +191,7 @@ export async function analyzeArticle(url: string): Promise<{
   wordCount: number;
   hadHeaders: boolean;
   metadata: {
+    url: string;
     title: string;
     author?: string;
     publishedAt?: string;
@@ -229,6 +230,11 @@ export async function analyzeArticle(url: string): Promise<{
     quality,
     wordCount,
     hadHeaders,
-    metadata,
+    metadata: {
+      url,
+      title: metadata.title,
+      author: metadata.author,
+      publishedAt: metadata.publishedAt,
+    },
   };
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { proxyFetch } from "@/lib/proxy";
 
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
 
@@ -19,12 +20,12 @@ export async function POST(request: NextRequest) {
     console.log("Fetching YouTube channel data for access token");
 
     // Fetch the user's YouTube channel using their OAuth token
-    const response = await fetch(url, {
+    const response = await proxyFetch(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/json",
       },
-      signal: AbortSignal.timeout(30000),
+      timeout: 30000,
     });
 
     if (!response.ok) {

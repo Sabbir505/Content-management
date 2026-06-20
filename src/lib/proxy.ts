@@ -78,48 +78,51 @@ export async function proxyFetch(url: string, init?: RequestInit & { timeout?: n
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-  if (!isServer) {
-    try {
-      const response = await fetch(url, {
-        ...init,
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      return response;
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error(`Request timeout after ${timeout}ms`);
-      }
-      throw error;
-    }
-  }
-
+  // Always try direct fetch first — proxy is optional
   try {
-    const { ProxyAgent, fetch: undiciFetch } = await import("undici");
-    const proxyUrl = await getProxyUrl();
-
-    if (proxyUrl) {
-      const dispatcher = new ProxyAgent(proxyUrl);
-      const response = await undiciFetch(url, {
-        ...init,
-        dispatcher,
-        signal: controller.signal as any,
-      } as any);
-      clearTimeout(timeoutId);
-      return response as unknown as Response;
-    }
-
-    const response = await undiciFetch(url, {
+    const response = await fetch(url, {
       ...init,
-      signal: controller.signal as any,
-    } as any);
+      signal: controller.signal,
+    });
     clearTimeout(timeoutId);
-    return response as unknown as Response;
+    return response;
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`Request timeout after ${timeout}ms`);
+    }
+    // If direct fetch fails on server, try with proxy as fallback
+    if (isServer) {
+      const controller2 = new AbortController();
+      const timeoutId2 = setTimeout(() => controller2.abort(), timeout);
+      try {
+        const { ProxyAgent, fetch: undiciFetch } = await import("undici");
+        const proxyUrl = await getProxyUrl();
+
+        if (proxyUrl) {
+          const dispatcher = new ProxyAgent(proxyUrl);
+          const response = await undiciFetch(url, {
+            ...init,
+            dispatcher,
+            signal: controller2.signal as any,
+          } as any);
+          clearTimeout(timeoutId2);
+          return response as unknown as Response;
+        }
+
+        const response = await undiciFetch(url, {
+          ...init,
+          signal: controller2.signal as any,
+        } as any);
+        clearTimeout(timeoutId2);
+        return response as unknown as Response;
+      } catch (proxyError) {
+        clearTimeout(timeoutId2);
+        if (proxyError instanceof Error && proxyError.name === "AbortError") {
+          throw new Error(`Request timeout after ${timeout}ms`);
+        }
+        throw proxyError;
+      }
     }
     throw error;
   }

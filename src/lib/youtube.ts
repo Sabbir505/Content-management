@@ -135,7 +135,8 @@ function parseQuotaError(error: unknown): YouTubeSearchError {
 }
 
 function buildMemoryCacheKey(query: string, filters: SearchFilters): string {
-  return `ytsearch:${query.toLowerCase()}:${filters.niche}:${filters.timeRange}:${filters.language}`;
+  // v2: includes date parsing fix - old v1 cache entries are invalidated
+  return `ytsearch:v2:${query.toLowerCase()}:${filters.niche}:${filters.timeRange}:${filters.language}`;
 }
 
 export async function searchYouTubeVideos(
