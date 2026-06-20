@@ -2,16 +2,11 @@ import { ContentItem, ContentSearchResult } from "@/types/content";
 import { fetchHackerNewsStories, searchHackerNewsByTopic } from "./hackernews";
 import { fetchRedditPosts, searchRedditPosts } from "./reddit";
 import { fetchDevToArticles, searchDevToArticles } from "./devto";
-import { fetchGoogleNewsViaRSS2JSON, fetchGoogleNewsRSS } from "./googlenews";
 import { searchSubstackByTopic, fetchTrendingSubstack } from "./substack";
-import { searchXTwitter, fetchTrendingXTwitter } from "./x-twitter";
-import { searchInstagram, fetchTrendingInstagram } from "./instagram";
-import { searchTikTok, fetchTrendingTikTok } from "./tiktok";
-import { searchLinkedIn, fetchTrendingLinkedIn } from "./linkedin";
 import { calculateContentDiscoveryScore } from "../discovery-score";
 import * as memoryCache from "@/lib/quality/cache";
 
-export type ContentSource = "hackernews" | "reddit" | "devto" | "googlenews" | "substack" | "x" | "instagram" | "tiktok" | "linkedin";
+export type ContentSource = "hackernews" | "reddit" | "devto" | "substack" | "x" | "instagram" | "tiktok" | "linkedin";
 
 export interface ContentSearchOptions {
   query: string;
@@ -66,7 +61,7 @@ function withSourceTimeout<T>(promise: Promise<T>, ms: number, source: string): 
 }
 
 export async function searchContent(options: ContentSearchOptions): Promise<ContentSearchResult[]> {
-  const { query, sources = ["hackernews", "reddit", "devto", "googlenews", "substack", "x", "instagram", "tiktok", "linkedin"], limit = 20, timeRange = "week" } = options;
+  const { query, sources = ["hackernews", "reddit", "devto", "substack"], limit = 20, timeRange = "month" } = options;
 
   // Check in-memory cache (skip if fresh requested via bypass)
   const bypassCache = options.bypassCache === true;
@@ -130,24 +125,9 @@ export async function searchContent(options: ContentSearchOptions): Promise<Cont
     );
   }
 
-  if (sources.includes("googlenews")) {
-    promises.push(
-      withSourceTimeout(fetchGoogleNewsRSS(query, limit), sourceTimeout, "googlenews").catch((error) => {
-        console.warn(`[Content] Google News failed for "${query}":`, error.message);
-        return {
-          items: [],
-          source: "googlenews",
-          fromCache: false,
-          fetchedAt: new Date().toISOString(),
-          error: error.message,
-        };
-      })
-    );
-  }
-
   if (sources.includes("substack")) {
     promises.push(
-      withSourceTimeout(searchSubstackByTopic(query, limit), sourceTimeout, "substack").catch((error) => {
+      withSourceTimeout(searchSubstackByTopic(query, limit), 15000, "substack").catch((error) => {
         console.warn(`[Content] Substack failed for "${query}":`, error.message);
         return {
           items: [],
@@ -160,65 +140,10 @@ export async function searchContent(options: ContentSearchOptions): Promise<Cont
     );
   }
 
-  if (sources.includes("x")) {
-    promises.push(
-      withSourceTimeout(searchXTwitter(query, limit), sourceTimeout, "x").catch((error) => {
-        console.warn(`[Content] X/Twitter failed for "${query}":`, error.message);
-        return {
-          items: [],
-          source: "x",
-          fromCache: false,
-          fetchedAt: new Date().toISOString(),
-          error: error.message,
-        };
-      })
-    );
-  }
-
-  if (sources.includes("instagram")) {
-    promises.push(
-      withSourceTimeout(searchInstagram(query, limit), sourceTimeout, "instagram").catch((error) => {
-        console.warn(`[Content] Instagram failed for "${query}":`, error.message);
-        return {
-          items: [],
-          source: "instagram",
-          fromCache: false,
-          fetchedAt: new Date().toISOString(),
-          error: error.message,
-        };
-      })
-    );
-  }
-
-  if (sources.includes("tiktok")) {
-    promises.push(
-      withSourceTimeout(searchTikTok(query, limit), sourceTimeout, "tiktok").catch((error) => {
-        console.warn(`[Content] TikTok failed for "${query}":`, error.message);
-        return {
-          items: [],
-          source: "tiktok",
-          fromCache: false,
-          fetchedAt: new Date().toISOString(),
-          error: error.message,
-        };
-      })
-    );
-  }
-
-  if (sources.includes("linkedin")) {
-    promises.push(
-      withSourceTimeout(searchLinkedIn(query, limit), sourceTimeout, "linkedin").catch((error) => {
-        console.warn(`[Content] LinkedIn failed for "${query}":`, error.message);
-        return {
-          items: [],
-          source: "linkedin",
-          fromCache: false,
-          fetchedAt: new Date().toISOString(),
-          error: error.message,
-        };
-      })
-    );
-  }
+  // X, Instagram, TikTok, LinkedIn are excluded from default search
+  // because these platforms block server-side requests from cloud IPs.
+  // They are available via the direct /api/content/scrape endpoint for
+  // client-side or proxy-based fetching.
 
   const settledResults = await Promise.allSettled(promises);
 
@@ -247,7 +172,7 @@ export async function searchContent(options: ContentSearchOptions): Promise<Cont
 }
 
 export async function fetchTrendingContent(sources?: ContentSource[], limit = 20, bypassCache = false): Promise<ContentSearchResult[]> {
-  const allSources = sources || ["hackernews", "reddit", "devto", "googlenews", "substack", "x", "instagram", "tiktok", "linkedin"];
+  const allSources = sources || ["hackernews", "reddit", "devto", "substack"];
 
   // Check in-memory cache (skip if fresh requested)
   const cacheKey = buildMemoryCacheKey("trending", allSources);
@@ -300,71 +225,11 @@ export async function fetchTrendingContent(sources?: ContentSource[], limit = 20
     );
   }
 
-  if (allSources.includes("googlenews")) {
-    promises.push(
-      withSourceTimeout(fetchGoogleNewsRSS("AI technology", limit), sourceTimeout, "googlenews").catch((error) => ({
-        items: [],
-        source: "googlenews",
-        fromCache: false,
-        fetchedAt: new Date().toISOString(),
-        error: error.message,
-      }))
-    );
-  }
-
   if (allSources.includes("substack")) {
     promises.push(
-      withSourceTimeout(fetchTrendingSubstack(limit), sourceTimeout, "substack").catch((error) => ({
+      withSourceTimeout(fetchTrendingSubstack(limit), 15000, "substack").catch((error) => ({
         items: [],
         source: "substack",
-        fromCache: false,
-        fetchedAt: new Date().toISOString(),
-        error: error.message,
-      }))
-    );
-  }
-
-  if (allSources.includes("x")) {
-    promises.push(
-      withSourceTimeout(fetchTrendingXTwitter(limit), sourceTimeout, "x").catch((error) => ({
-        items: [],
-        source: "x",
-        fromCache: false,
-        fetchedAt: new Date().toISOString(),
-        error: error.message,
-      }))
-    );
-  }
-
-  if (allSources.includes("instagram")) {
-    promises.push(
-      withSourceTimeout(fetchTrendingInstagram(limit), sourceTimeout, "instagram").catch((error) => ({
-        items: [],
-        source: "instagram",
-        fromCache: false,
-        fetchedAt: new Date().toISOString(),
-        error: error.message,
-      }))
-    );
-  }
-
-  if (allSources.includes("tiktok")) {
-    promises.push(
-      withSourceTimeout(fetchTrendingTikTok(limit), sourceTimeout, "tiktok").catch((error) => ({
-        items: [],
-        source: "tiktok",
-        fromCache: false,
-        fetchedAt: new Date().toISOString(),
-        error: error.message,
-      }))
-    );
-  }
-
-  if (allSources.includes("linkedin")) {
-    promises.push(
-      withSourceTimeout(fetchTrendingLinkedIn(limit), sourceTimeout, "linkedin").catch((error) => ({
-        items: [],
-        source: "linkedin",
         fromCache: false,
         fetchedAt: new Date().toISOString(),
         error: error.message,

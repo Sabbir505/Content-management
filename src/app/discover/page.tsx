@@ -820,7 +820,7 @@ function DiscoverPageContent() {
     // Platform filter — map content sources to selected platforms
     // Direct matches: substack, instagram, tiktok, linkedin
     // "twitter" platform maps to "x" source
-    // hackernews, reddit, devto, googlenews show if ANY non-YouTube platform is selected
+    // hackernews, reddit, devto show if ANY non-YouTube platform is selected
     const platformToSource: Record<string, string> = { twitter: "x", substack: "substack", instagram: "instagram", tiktok: "tiktok", linkedin: "linkedin" };
     const activeSources = selectedPlatforms.map((p) => platformToSource[p]).filter(Boolean);
     const hasAnyContentPlatform = selectedPlatforms.some((p) => p !== "youtube");
@@ -832,7 +832,7 @@ function DiscoverPageContent() {
         if (["x", "substack", "instagram", "tiktok", "linkedin"].includes(item.source)) {
           return activeSources.includes(item.source);
         }
-        // Legacy sources (hackernews, reddit, devto, googlenews) show when any content platform is active
+        // Legacy sources (hackernews, reddit, devto) show when any content platform is active
         return true;
       });
     }

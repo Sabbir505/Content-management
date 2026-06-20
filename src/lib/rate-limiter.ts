@@ -14,13 +14,6 @@ const DEFAULT_CONFIGS: Record<string, RateLimitConfig> = {
     retryAttempts: 3,
     retryDelayBaseMs: 5000,
   },
-  googlenews: {
-    name: "Google News",
-    minDelayMs: 1500,
-    maxConcurrent: 2,
-    retryAttempts: 3,
-    retryDelayBaseMs: 3000,
-  },
   reddit: {
     name: "Reddit",
     minDelayMs: 1000,

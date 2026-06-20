@@ -63,8 +63,6 @@ export const ContentCard = React.memo(function ContentCard({ item, onSave }: Con
         return "🔴";
       case "devto":
         return "🟣";
-      case "googlenews":
-        return "🔵";
       case "x":
         return "𝕏";
       case "substack":
@@ -88,8 +86,6 @@ export const ContentCard = React.memo(function ContentCard({ item, onSave }: Con
         return "Reddit";
       case "devto":
         return "DEV.to";
-      case "googlenews":
-        return "Google News";
       case "x":
         return "X/Twitter";
       case "substack":

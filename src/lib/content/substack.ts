@@ -17,16 +17,13 @@ interface SubstackPost {
 }
 
 const POPULAR_PUBLICATIONS = [
-  "platformer",
-  "thegeneralist",
-  "lenny",
-  "stratechery",
-  "notboring",
-  "readmultiplex",
-  "aisupremacy",
-  "oneusefulthing",
-  "thealgorithmicbridge",
+  "thesequence",
+  "importai",
+  "theaiedge",
+  "chamath",
   "aibrews",
+  "marktechpost",
+  "milkroad",
 ];
 
 export async function fetchSubstackPosts(
@@ -61,20 +58,15 @@ function substackPostToContentItem(post: SubstackPost, publication: string): Con
 
 export async function searchSubstackByTopic(query: string, limit = 20): Promise<ContentSearchResult> {
   const allItems: ContentItem[] = [];
-  const queryLower = query.toLowerCase();
+  const allFetched: ContentItem[] = [];
+  const queryWords = query.toLowerCase().split(/\s+/).filter(Boolean);
 
-  // Fetch from multiple popular publications and filter by query
-  const fetchPromises = POPULAR_PUBLICATIONS.map(async (pub) => {
+  // Fetch from popular publications and filter by query keywords
+  const fetchPromises = POPULAR_PUBLICATIONS.slice(0, 5).map(async (pub) => {
     try {
-      const posts = await fetchSubstackPosts(pub, 12);
-      return posts
-        .filter(
-          (p) =>
-            p.title.toLowerCase().includes(queryLower) ||
-            (p.subtitle && p.subtitle.toLowerCase().includes(queryLower)) ||
-            (p.description && p.description.toLowerCase().includes(queryLower))
-        )
-        .map((p) => substackPostToContentItem(p, pub));
+      const posts = await fetchSubstackPosts(pub, 6);
+      const items = posts.map((p) => substackPostToContentItem(p, pub));
+      return items;
     } catch {
       return [];
     }
@@ -83,8 +75,21 @@ export async function searchSubstackByTopic(query: string, limit = 20): Promise<
   const results = await Promise.allSettled(fetchPromises);
   for (const result of results) {
     if (result.status === "fulfilled") {
-      allItems.push(...result.value);
+      allFetched.push(...result.value);
     }
+  }
+
+  // Filter by query keywords
+  const matched = allFetched.filter((item) => {
+    const text = `${item.title} ${item.description || ""}`.toLowerCase();
+    return queryWords.some((word) => text.includes(word));
+  });
+
+  // If keyword filtering found results, use them. Otherwise return recent posts.
+  if (matched.length > 0) {
+    allItems.push(...matched);
+  } else {
+    allItems.push(...allFetched);
   }
 
   // Sort by score/reactions
@@ -101,9 +106,9 @@ export async function searchSubstackByTopic(query: string, limit = 20): Promise<
 export async function fetchTrendingSubstack(limit = 20): Promise<ContentSearchResult> {
   const allItems: ContentItem[] = [];
 
-  const fetchPromises = POPULAR_PUBLICATIONS.map(async (pub) => {
+  const fetchPromises = POPULAR_PUBLICATIONS.slice(0, 6).map(async (pub) => {
     try {
-      const posts = await fetchSubstackPosts(pub, 5);
+      const posts = await fetchSubstackPosts(pub, 4);
       return posts.map((p) => substackPostToContentItem(p, pub));
     } catch {
       return [];
