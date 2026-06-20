@@ -65,6 +65,16 @@ export const ContentCard = React.memo(function ContentCard({ item, onSave }: Con
         return "🟣";
       case "googlenews":
         return "🔵";
+      case "x":
+        return "𝕏";
+      case "substack":
+        return "📰";
+      case "instagram":
+        return "📷";
+      case "tiktok":
+        return "🎵";
+      case "linkedin":
+        return "💼";
       default:
         return "📄";
     }
@@ -80,6 +90,16 @@ export const ContentCard = React.memo(function ContentCard({ item, onSave }: Con
         return "DEV.to";
       case "googlenews":
         return "Google News";
+      case "x":
+        return "X/Twitter";
+      case "substack":
+        return "Substack";
+      case "instagram":
+        return "Instagram";
+      case "tiktok":
+        return "TikTok";
+      case "linkedin":
+        return "LinkedIn";
       default:
         return source;
     }
