@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { useConnectChannel } from "@/hooks/useConnectChannel";
 import type { YouTubeSearchError } from "@/lib/quality/types";
 import type { TrackedCreator } from "@/types/creator";
+import { Trash2 } from "lucide-react";
 
 type ContentType = "videos" | "articles" | "all";
 type SortOption = "discovery" | "trending" | "top" | "recent" | "discussed";
@@ -1062,46 +1063,38 @@ function DiscoverPageContent() {
                 <button
                   key={category}
                   onClick={() => setSelectedCategory(category)}
-                  className={`group relative px-4 py-1.5 rounded-full text-sm border whitespace-nowrap transition-colors ${
+                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm border whitespace-nowrap transition-colors ${
                     selectedCategory === category
                       ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
                       : "border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a] hover:text-white"
                   }`}
                 >
-                  <span className="flex items-center gap-1.5">
-                    {category === "All" ? (
-                      <>
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                        </svg>
-                        All
-                      </>
-                    ) : (
-                      category
-                    )}
-                  </span>
-                  {/* Trash icon for all categories except "All" */}
-                  {category !== "All" && (
-                    <span
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // Remove from active categories (built-in)
-                        setActiveCategories((prev) => prev.filter((c) => c !== category));
-                        // Remove from custom categories (user-added)
-                        setCustomCategories((prev) => prev.filter((c) => c !== category));
-                        // Always reset to "All" when deleting current category
-                        if (selectedCategory === category) {
-                          setSelectedCategory("All");
-                        }
-                      }}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500/90 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10"
-                      title="Remove category"
-                    >
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                  {category === "All" ? (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                       </svg>
-                    </span>
+                      All
+                    </>
+                  ) : (
+                    <>
+                      {category}
+                      <span
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveCategories((prev) => prev.filter((c) => c !== category));
+                          setCustomCategories((prev) => prev.filter((c) => c !== category));
+                          if (selectedCategory === category) {
+                            setSelectedCategory("All");
+                          }
+                        }}
+                        className="ml-1 flex items-center justify-center text-[#555] hover:text-red-400 transition-colors"
+                        title="Remove category"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </span>
+                    </>
                   )}
                 </button>
               ))}
