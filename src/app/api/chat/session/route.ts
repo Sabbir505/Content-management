@@ -12,6 +12,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import type { ChatSession, ChatMessage } from "@/types/chat";
+import { validateUserAccess } from "@/lib/api-auth";
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,6 +22,9 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       return NextResponse.json({ success: false, error: "userId is required" }, { status: 400 });
     }
+
+    const authError = validateUserAccess(request, userId);
+    if (authError) return authError;
 
     const sessionId = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -60,6 +64,9 @@ export async function GET(request: NextRequest) {
     if (!userId) {
       return NextResponse.json({ success: false, error: "userId is required" }, { status: 400 });
     }
+
+    const authError = validateUserAccess(request, userId);
+    if (authError) return authError;
 
     if (sessionId) {
       // Fetch specific session with messages

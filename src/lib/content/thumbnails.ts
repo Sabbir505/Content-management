@@ -22,7 +22,7 @@ export function getSourceIconUrl(source: string): string {
     hackernews: "https://cdn.simpleicons.org/ycombinator/FF6600",
     reddit: "https://cdn.simpleicons.org/reddit/FF4500",
     devto: "https://cdn.simpleicons.org/devdotto/0A0A0A",
-    googlenews: "https://cdn.simpleicons.org/googlenews/4285F4",
+    substack: "https://cdn.simpleicons.org/substack/FF6719",
   };
   return icons[source] || "";
 }
@@ -58,7 +58,7 @@ export function getPlaceholderGradient(source: string): string {
     hackernews: "from-orange-50 to-orange-100",
     reddit: "from-red-50 to-red-100",
     devto: "from-gray-50 to-gray-100",
-    googlenews: "from-blue-50 to-blue-100",
+    substack: "from-orange-50 to-orange-100",
   };
   return gradients[source] || "from-gray-50 to-gray-100";
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signInWithEmail, signInWithGoogle } from "@/lib/auth";
+import { getFirebaseAuthErrorMessage } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +27,7 @@ export default function LoginPage() {
       await signInWithEmail(email, password);
       router.push("/discover");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign in");
+      setError(err instanceof Error ? getFirebaseAuthErrorMessage(err) : "Failed to sign in");
     } finally {
       setIsLoading(false);
     }
@@ -44,7 +45,7 @@ export default function LoginPage() {
       }
       router.push("/discover");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign in with Google");
+      setError(err instanceof Error ? getFirebaseAuthErrorMessage(err) : "Failed to sign in with Google");
     } finally {
       setIsLoading(false);
     }

@@ -1,5 +1,5 @@
 import { rateLimiter } from "@/lib/rate-limiter";
-import type { ContentItem, ContentSearchResult } from "@/types/content";
+import type { ContentSearchResult } from "@/types/content";
 import { proxyFetch } from "../proxy";
 import { getBestThumbnail } from "./thumbnails";
 
@@ -129,7 +129,7 @@ export async function fetchGoogleNewsRSS(topic: string, limit = 20): Promise<Con
           id: `googlenews-${index}`,
           title: item.title,
           url: resolvedUrl,
-          source: "googlenews" as const,
+          source: "googlenews" as any,
           author: item.author || "Google News",
           score: 0, // RSS doesn't provide engagement scores
           publishedAt: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
@@ -167,11 +167,11 @@ export async function fetchGoogleNewsViaRSS2JSON(topic: string, limit = 20): Pro
       throw new Error(`RSS2JSON error: ${data.message || "Unknown error"}`);
     }
 
-    const items: ContentItem[] = data.items.map((item: any, index: number) => ({
+    const items: any[] = data.items.map((item: any, index: number) => ({
       id: `googlenews-${index}`,
       title: item.title,
       url: item.link,
-      source: "googlenews" as const,
+      source: "googlenews",
       author: item.author || "Google News",
       score: 0,
       publishedAt: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),

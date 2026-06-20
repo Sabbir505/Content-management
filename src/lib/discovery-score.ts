@@ -7,7 +7,7 @@ const SOURCE_BASELINES: Record<string, { typicalMax: number; typicalMedian: numb
   hackernews: { typicalMax: 500, typicalMedian: 50 },
   reddit: { typicalMax: 5000, typicalMedian: 200 },
   devto: { typicalMax: 100, typicalMedian: 10 },
-  googlenews: { typicalMax: 1, typicalMedian: 1 }, // No scores available
+  substack: { typicalMax: 200, typicalMedian: 20 },
 };
 
 /**

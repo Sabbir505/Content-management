@@ -17,6 +17,22 @@ import { useRouter } from "next/navigation";
 import { useConnectChannel } from "@/hooks/useConnectChannel";
 import type { YouTubeSearchError } from "@/lib/quality/types";
 import type { TrackedCreator } from "@/types/creator";
+import { Trash2, Link2, FileText, Square, Layers, BookOpen } from "lucide-react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  getDocs,
+  query,
+  orderBy,
+  serverTimestamp,
+  updateDoc,
+  increment,
+} from "firebase/firestore";
+import type { Board, BoardCard } from "@/types/board";
 
 type ContentType = "videos" | "articles" | "all";
 type SortOption = "discovery" | "trending" | "top" | "recent" | "discussed";
@@ -24,42 +40,71 @@ type TimeRange = "day" | "week" | "month" | "year";
 type ResearchTab = "discover" | "creators" | "lists" | "channel";
 
 const PLATFORMS = [
-  { id: "youtube", label: "YouTube", icon: "▶️" },
-  { id: "hackernews", label: "Hacker News", icon: "🟠" },
-  { id: "reddit", label: "Reddit", icon: "🔴" },
-  { id: "devto", label: "DEV.to", icon: "🟣" },
-  { id: "googlenews", label: "Google News", icon: "🔵" },
+  { id: "twitter", label: "X / Twitter" },
+  { id: "youtube", label: "YouTube" },
+  { id: "substack", label: "Substack" },
+  { id: "instagram", label: "Instagram" },
+  { id: "tiktok", label: "TikTok" },
+  { id: "linkedin", label: "LinkedIn" },
 ];
+
+function PlatformIcon({ id, className = "w-4 h-4" }: { id: string; className?: string }) {
+  switch (id) {
+    case "twitter":
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>;
+    case "youtube":
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>;
+    case "substack":
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M22.539 8.242H1.46V5.406h21.08v2.836zM1.46 10.812V24l9.56-5.39L20.54 24V10.812H1.46zM22.54 0H1.46v2.836h21.08V0z"/></svg>;
+    case "instagram":
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>;
+    case "tiktok":
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>;
+    case "linkedin":
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>;
+    default:
+      return null;
+  }
+}
 
 const LANGUAGES = [
   { id: "en", label: "English" },
   { id: "es", label: "Spanish" },
+  { id: "pt", label: "Portuguese" },
   { id: "fr", label: "French" },
   { id: "de", label: "German" },
-  { id: "pt", label: "Portuguese" },
-  { id: "hi", label: "Hindi" },
+  { id: "it", label: "Italian" },
+  { id: "nl", label: "Dutch" },
   { id: "ja", label: "Japanese" },
   { id: "ko", label: "Korean" },
-  { id: "ar", label: "Arabic" },
   { id: "zh", label: "Chinese" },
+  { id: "hi", label: "Hindi" },
+  { id: "ar", label: "Arabic" },
 ];
 
 const FOLLOWER_RANGES = [
   { id: "any", label: "Any" },
-  { id: "1k", label: "1K+" },
-  { id: "10k", label: "10K+" },
-  { id: "100k", label: "100K+" },
-  { id: "1m", label: "1M+" },
-  { id: "10m", label: "10M+" },
+  { id: "1k-20k", label: "1K \u2013 20K" },
+  { id: "20k-100k", label: "20K \u2013 100K" },
+  { id: "100k-1m", label: "100K \u2013 1M" },
+  { id: "1m-8m", label: "1M \u2013 8M" },
+  { id: "8m+", label: "8M+" },
 ];
 
 const OUTLIER_RANGES = [
   { id: "any", label: "Any" },
-  { id: "2x", label: "2x+" },
-  { id: "5x", label: "5x+" },
-  { id: "10x", label: "10x+" },
-  { id: "50x", label: "50x+" },
-  { id: "100x", label: "100x+" },
+  { id: "3x", label: "3\u00d7 or more" },
+  { id: "5x", label: "5\u00d7 or more" },
+  { id: "10x", label: "10\u00d7 or more" },
+  { id: "20x", label: "20\u00d7 or more" },
+];
+
+const TIME_PERIODS = [
+  { id: "week", label: "Week" },
+  { id: "month", label: "Month" },
+  { id: "3months", label: "3 months" },
+  { id: "year", label: "Year" },
+  { id: "all", label: "All time" },
 ];
 
 function isQuotaError(error: string | undefined): boolean {
@@ -80,7 +125,7 @@ function getAgeHours(publishedAt: string): number {
 }
 
 function DiscoverPageContent() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [videos, setVideos] = useState<VideoWithOutlier[]>([]);
@@ -94,7 +139,10 @@ function DiscoverPageContent() {
   const [activeTab, setActiveTab] = useState<ContentType>("all");
   const [researchTab, setResearchTab] = useState<ResearchTab>("discover");
   const [sortBy, setSortBy] = useState<SortOption>("top");
-  const [timeRange, setTimeRange] = useState<TimeRange>("week");
+  const [displayCount, setDisplayCount] = useState(16);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>("month");
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [boardPickerOpen, setBoardPickerOpen] = useState(false);
   const [pendingSaveVideo, setPendingSaveVideo] = useState<VideoWithOutlier | null>(null);
@@ -102,11 +150,14 @@ function DiscoverPageContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["youtube", "hackernews", "reddit", "devto", "googlenews"]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["twitter", "youtube", "substack", "instagram", "tiktok", "linkedin"]);
   const [selectedFormat, setSelectedFormat] = useState<"all" | "videos" | "articles" | "shorts" | "notes" | "reels" | "carousel" | "photos">("all");
   const [selectedLanguage, setSelectedLanguage] = useState("en");
   const [selectedFollowers, setSelectedFollowers] = useState("any");
-  const [selectedOutlier, setSelectedOutlier] = useState("any");
+  const [followerMin, setFollowerMin] = useState("50000");
+  const [followerMax, setFollowerMax] = useState("8000000");
+  const [selectedOutlier, setSelectedOutlier] = useState("10x");
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState("3months");
   // Initialize with defaults — load from localStorage in useEffect after hydration
   const [customCategories, setCustomCategories] = useState<string[]>([]);
   const [activeCategories, setActiveCategories] = useState<string[]>([
@@ -121,6 +172,7 @@ function DiscoverPageContent() {
     "Entertainment",
   ]);
   const [showAddCategory, setShowAddCategory] = useState(false);
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
   const [newCategory, setNewCategory] = useState("");
   // Creators tab state
   const [trackedCreators, setTrackedCreators] = useState<TrackedCreator[]>([]);
@@ -128,7 +180,7 @@ function DiscoverPageContent() {
   const [creatorUrl, setCreatorUrl] = useState("");
   const [isTrackingCreator, setIsTrackingCreator] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
-  const fetchInProgressRef = useRef(false);
+  const fetchCountRef = useRef(0);
 
   const queryParam = searchParams.get("query");
   const userId = user?.uid;
@@ -152,6 +204,20 @@ function DiscoverPageContent() {
   const [chatSessions, setChatSessions] = useState<{ id: string; title: string }[]>([]);
   const [isLoadingChatSessions, setIsLoadingChatSessions] = useState(false);
   const [chatDropdownOpen, setChatDropdownOpen] = useState(false);
+
+  // Workspace board state
+  const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
+  const [workspaceCards, setWorkspaceCards] = useState<BoardCard[]>([]);
+  const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [cardContextMenu, setCardContextMenu] = useState<{ card: BoardCard; x: number; y: number } | null>(null);
+
+  // Right pane state (split screen)
+  const [rightPane, setRightPane] = useState<{ type: "info" | "chat"; card?: BoardCard } | null>(null);
+  const [chatInput, setChatInput] = useState("");
+
+  // More menu state
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
   // Load categories from localStorage after hydration
   useEffect(() => {
@@ -191,13 +257,13 @@ function DiscoverPageContent() {
   // Initial load: fetch trending content based on selected category
   useEffect(() => {
     if (!userId) return;
-    if (fetchInProgressRef.current) return;
 
     setVideos([]);
     setContentItems([]);
+    setDisplayCount(16);
 
     const abortController = new AbortController();
-    fetchInProgressRef.current = true;
+    fetchCountRef.current += 1;
 
     // When "All" is selected, fetch content for all active categories combined
     let query: string;
@@ -217,9 +283,25 @@ function DiscoverPageContent() {
 
     return () => {
       abortController.abort();
-      fetchInProgressRef.current = false;
     };
   }, [userId, timeRange, selectedCategory]);
+
+  // Infinite scroll: load more items when scrolling near bottom
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isLoadingMore && !isLoadingVideos && !isLoadingContent) {
+          setIsLoadingMore(true);
+          setDisplayCount((prev) => prev + 12);
+          setTimeout(() => setIsLoadingMore(false), 300);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    const el = loadMoreRef.current;
+    if (el) observer.observe(el);
+    return () => { if (el) observer.unobserve(el); };
+  }, [isLoadingMore, isLoadingVideos, isLoadingContent]);
 
   // Load chat sessions when dropdown opens
   useEffect(() => {
@@ -242,6 +324,151 @@ function DiscoverPageContent() {
     } finally {
       setIsLoadingChatSessions(false);
     }
+  }
+
+  // Load workspace cards when a workspace board is selected
+  useEffect(() => {
+    if (activeWorkspace && user) {
+      loadWorkspaceCards(activeWorkspace);
+    }
+  }, [activeWorkspace, user]);
+
+  // Close context menu, add menu, and more menu on click outside
+  useEffect(() => {
+    if (!cardContextMenu && !addMenuOpen && !moreMenuOpen) return;
+    function handleClick() {
+      setCardContextMenu(null);
+      setAddMenuOpen(false);
+      setMoreMenuOpen(false);
+    }
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [cardContextMenu, addMenuOpen, moreMenuOpen]);
+
+  async function loadWorkspaceCards(boardId: string) {
+    if (!user) return;
+    setIsLoadingWorkspace(true);
+    try {
+      // Ensure the board exists
+      const { getDoc } = await import("firebase/firestore");
+      const boardRef = doc(db, "users", user.uid, "boards", boardId);
+      const boardSnap = await getDoc(boardRef);
+      if (!boardSnap.exists()) {
+        const name = boardId === "my-first-board" ? "My First Board" : "My Ideas";
+        await setDoc(boardRef, {
+          name,
+          description: boardId === "my-first-board" ? "Your notes and references" : "Quick ideas and notes",
+          isDefault: boardId === "my-ideas",
+          itemCount: 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      const cardsSnapshot = await getDocs(
+        query(collection(db, "users", user.uid, "boards", boardId, "cards"), orderBy("createdAt", "desc"))
+      );
+      const loaded: BoardCard[] = [];
+      cardsSnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        loaded.push({
+          id: docSnap.id,
+          boardId: data.boardId || boardId,
+          type: data.type || "note",
+          x: data.x ?? 0,
+          y: data.y ?? 0,
+          width: data.width ?? 240,
+          height: data.height ?? 160,
+          title: data.title || "Untitled",
+          content: data.content || "",
+          metadata: data.metadata,
+          thumbnail: data.thumbnail,
+          url: data.url,
+          videoId: data.videoId,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || "",
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || "",
+        });
+      });
+      setWorkspaceCards(loaded);
+    } catch (error) {
+      console.error("Failed to load workspace cards:", error);
+      toast.error("Failed to load board");
+    } finally {
+      setIsLoadingWorkspace(false);
+    }
+  }
+
+  async function handleAddCard(type: "note" | "link" | "document" | "card" | "section" | "reference") {
+    if (!user || !activeWorkspace) return;
+    const cardId = crypto.randomUUID();
+    const titleMap = { note: "New Note", link: "New Link", document: "New Document", card: "New Card", section: "New Section", reference: "New Reference" };
+    const card: BoardCard = {
+      id: cardId,
+      boardId: activeWorkspace,
+      type: "note",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 160,
+      title: titleMap[type],
+      content: "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      await setDoc(doc(db, "users", user.uid, "boards", activeWorkspace, "cards", cardId), {
+        ...card,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, "users", user.uid, "boards", activeWorkspace), {
+        itemCount: increment(1),
+        updatedAt: serverTimestamp(),
+      });
+      setWorkspaceCards((prev) => [card, ...prev]);
+      toast.success(`${titleMap[type]} created`);
+    } catch {
+      toast.error("Failed to create item");
+    }
+    setAddMenuOpen(false);
+  }
+
+  async function handleDeleteCard(cardId: string) {
+    if (!user || !activeWorkspace) return;
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "boards", activeWorkspace, "cards", cardId));
+      await updateDoc(doc(db, "users", user.uid, "boards", activeWorkspace), {
+        itemCount: increment(-1),
+        updatedAt: serverTimestamp(),
+      });
+      setWorkspaceCards((prev) => prev.filter((c) => c.id !== cardId));
+      toast.success("Card deleted");
+    } catch {
+      toast.error("Failed to delete card");
+    }
+    setCardContextMenu(null);
+  }
+
+  async function handleDuplicateCard(card: BoardCard) {
+    if (!user || !activeWorkspace) return;
+    const newId = crypto.randomUUID();
+    const newCard = { ...card, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    try {
+      await setDoc(doc(db, "users", user.uid, "boards", activeWorkspace, "cards", newId), {
+        ...newCard,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, "users", user.uid, "boards", activeWorkspace), {
+        itemCount: increment(1),
+        updatedAt: serverTimestamp(),
+      });
+      setWorkspaceCards((prev) => [newCard, ...prev]);
+      toast.success("Card duplicated");
+    } catch {
+      toast.error("Failed to duplicate card");
+    }
+    setCardContextMenu(null);
   }
 
   // Load tracked creators when on creators tab
@@ -298,24 +525,27 @@ function DiscoverPageContent() {
       setVideos(scoredVideos);
       setFromCache(result.data.fromCache || false);
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Failed to load videos");
       setVideos([]);
     } finally {
       setIsLoadingVideos(false);
-      fetchInProgressRef.current = false;
     }
   }
 
   async function fetchContent(query: string, abortSignal?: AbortSignal) {
     setIsLoadingContent(true);
     try {
+      if (abortSignal?.aborted) return;
+
       const controller = new AbortController();
       if (abortSignal) {
-        abortSignal.addEventListener("abort", () => controller.abort());
+        const onAbort = () => controller.abort();
+        abortSignal.addEventListener("abort", onAbort, { once: true });
       }
       const timeoutId = setTimeout(() => controller.abort(), 45000);
 
-      const response = await fetch(`/api/content/search?query=${encodeURIComponent(query)}&limit=20`, {
+      const response = await fetch(`/api/content/search?query=${encodeURIComponent(query)}&limit=40`, {
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -343,10 +573,10 @@ function DiscoverPageContent() {
         setContentItems(scoredItems);
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       console.error("Content fetch error:", err);
     } finally {
       setIsLoadingContent(false);
-      fetchInProgressRef.current = false;
     }
   }
 
@@ -498,10 +728,18 @@ function DiscoverPageContent() {
 
   function handleRetry() {
     setQuotaError(null);
-    const query = selectedCategory !== "All" ? selectedCategory : searchQuery || "trending";
+    let retryQuery: string;
+    if (searchQuery.trim()) {
+      retryQuery = searchQuery.trim();
+    } else if (selectedCategory !== "All") {
+      retryQuery = selectedCategory;
+    } else {
+      const allCats = [...activeCategories, ...customCategories];
+      retryQuery = allCats.length > 0 ? allCats.join(" | ") : "trending";
+    }
     const controller = new AbortController();
-    fetchVideos(query, controller.signal);
-    fetchContent(query, controller.signal);
+    fetchVideos(retryQuery, controller.signal);
+    fetchContent(retryQuery, controller.signal);
   }
 
   function handleSearchSubmit(e: React.FormEvent) {
@@ -538,13 +776,10 @@ function DiscoverPageContent() {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter((v) => v.title.toLowerCase().includes(q) || (v.channelTitle || "").toLowerCase().includes(q));
     }
-    // Category filter
-    if (selectedCategory !== "All") {
-      filtered = filtered.filter((v) => v.title.toLowerCase().includes(selectedCategory.toLowerCase()));
-    }
     // Outlier filter
     if (selectedOutlier !== "any") {
-      const minOutlier = parseInt(selectedOutlier);
+      const outlierMap: Record<string, number> = { "3x": 3, "5x": 5, "10x": 10, "20x": 20 };
+      const minOutlier = outlierMap[selectedOutlier] || 1;
       filtered = filtered.filter((v) => (v.outlierScore || 0) >= minOutlier);
     }
     // Platform filter - check if youtube is selected
@@ -573,11 +808,20 @@ function DiscoverPageContent() {
         return seconds > 60;
       });
     }
-    // Time range filter (client-side fallback for cached data)
-    const cutoffDate = getTimeRangeCutoff(timeRange);
-    filtered = filtered.filter((v) => new Date(v.publishedAt).getTime() >= cutoffDate.getTime());
+    // Time period filter (from filter panel)
+    const timePeriodMs: Record<string, number> = {
+      week: 7 * 24 * 60 * 60 * 1000,
+      month: 30 * 24 * 60 * 60 * 1000,
+      "3months": 90 * 24 * 60 * 60 * 1000,
+      year: 365 * 24 * 60 * 60 * 1000,
+      all: Infinity,
+    };
+    const periodCutoff = Date.now() - (timePeriodMs[selectedTimePeriod] || timePeriodMs["3months"]);
+    if (periodCutoff !== -Infinity) {
+      filtered = filtered.filter((v) => new Date(v.publishedAt).getTime() >= periodCutoff);
+    }
     return filtered;
-  }, [videos, searchQuery, selectedCategory, selectedOutlier, selectedPlatforms, selectedFormat, timeRange]);
+  }, [videos, searchQuery, selectedCategory, selectedOutlier, selectedPlatforms, selectedFormat, selectedTimePeriod]);
 
   const filteredArticles = useMemo(() => {
     let filtered = [...contentItems];
@@ -586,17 +830,39 @@ function DiscoverPageContent() {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter((item) => item.title.toLowerCase().includes(q) || (item.author || "").toLowerCase().includes(q));
     }
-    // Category filter
-    if (selectedCategory !== "All") {
-      filtered = filtered.filter((item) => item.title.toLowerCase().includes(selectedCategory.toLowerCase()));
+    // Platform filter — map content sources to selected platforms
+    // Direct matches: substack, instagram, tiktok, linkedin
+    // "twitter" platform maps to "x" source
+    // hackernews, reddit, devto show if ANY non-YouTube platform is selected
+    const platformToSource: Record<string, string> = { twitter: "x", substack: "substack", instagram: "instagram", tiktok: "tiktok", linkedin: "linkedin" };
+    const activeSources = selectedPlatforms.map((p) => platformToSource[p]).filter(Boolean);
+    const hasAnyContentPlatform = selectedPlatforms.some((p) => p !== "youtube");
+    if (!hasAnyContentPlatform) {
+      filtered = [];
+    } else {
+      filtered = filtered.filter((item) => {
+        // New platform sources filter directly
+        if (["x", "substack", "instagram", "tiktok", "linkedin"].includes(item.source)) {
+          return activeSources.includes(item.source);
+        }
+        // Legacy sources (hackernews, reddit, devto) show when any content platform is active
+        return true;
+      });
     }
-    // Platform filter
-    filtered = filtered.filter((item) => selectedPlatforms.includes(item.source));
-    // Time range filter
-    const cutoffDate = getTimeRangeCutoff(timeRange);
-    filtered = filtered.filter((item) => new Date(item.publishedAt).getTime() >= cutoffDate.getTime());
+    // Time period filter (from filter panel)
+    const timePeriodMs: Record<string, number> = {
+      week: 7 * 24 * 60 * 60 * 1000,
+      month: 30 * 24 * 60 * 60 * 1000,
+      "3months": 90 * 24 * 60 * 60 * 1000,
+      year: 365 * 24 * 60 * 60 * 1000,
+      all: Infinity,
+    };
+    const periodCutoff = Date.now() - (timePeriodMs[selectedTimePeriod] || timePeriodMs["3months"]);
+    if (periodCutoff !== -Infinity) {
+      filtered = filtered.filter((item) => new Date(item.publishedAt).getTime() >= periodCutoff);
+    }
     return filtered;
-  }, [contentItems, searchQuery, selectedCategory, selectedPlatforms, timeRange]);
+  }, [contentItems, searchQuery, selectedCategory, selectedPlatforms, selectedTimePeriod]);
 
   const unifiedItemsMemo = useMemo(() => {
     const scoredVideos = filteredVideos.map((video) => ({
@@ -624,13 +890,6 @@ function DiscoverPageContent() {
           return bVelocity - aVelocity;
         });
         break;
-      case "top":
-        combined.sort((a, b) => {
-          const aScore = a.contentType === "video" ? (a.viewCount || 0) : (a.score || 0);
-          const bScore = b.contentType === "video" ? (b.viewCount || 0) : (b.score || 0);
-          return bScore - aScore;
-        });
-        break;
       case "recent":
         combined.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
         break;
@@ -641,7 +900,9 @@ function DiscoverPageContent() {
           return bComments - aComments;
         });
         break;
+      case "top":
       default:
+        // Best items first: sort by discoveryScore (combines engagement + recency)
         combined.sort((a, b) => b.discoveryScore - a.discoveryScore);
     }
 
@@ -698,6 +959,23 @@ function DiscoverPageContent() {
     return sorted;
   }, [filteredArticles, sortBy]);
 
+  // Auth guard — redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/auth/login");
+    }
+  }, [authLoading, user, router]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex">
       {/* Sidebar */}
@@ -716,8 +994,44 @@ function DiscoverPageContent() {
 
         <div className="flex-1 overflow-y-auto px-3 space-y-1">
           <SidebarItem icon="home" label="Home" onClick={() => router.push("/")} />
-          <SidebarItem icon="research" label="Research" active onClick={() => {}} />
-          <SidebarItem icon="menu" label="Menu" onClick={() => {}} />
+          <SidebarItem icon="research" label="Research" active={!activeWorkspace} onClick={() => setActiveWorkspace(null)} />
+          {/* More dropdown */}
+          <div className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setMoreMenuOpen(!moreMenuOpen); }}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors text-[#888] hover:bg-[#1a1a1a] hover:text-white"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
+              </svg>
+              <span className="truncate">More</span>
+            </button>
+            {moreMenuOpen && (
+              <div className="absolute left-0 top-full mt-1 w-52 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl z-50 py-1.5" onClick={(e) => e.stopPropagation()}>
+                <button onClick={() => setMoreMenuOpen(false)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  <span>Skills</span>
+                </button>
+                <button onClick={() => setMoreMenuOpen(false)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
+                  <span>Highlights</span>
+                </button>
+                <button onClick={() => setMoreMenuOpen(false)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                  <span>Identities</span>
+                </button>
+                <button onClick={() => setMoreMenuOpen(false)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  <span>Capture</span>
+                </button>
+                <div className="my-1 border-t border-[#2a2a2a]" />
+                <button onClick={() => setMoreMenuOpen(false)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  <span>Customize sidebar</span>
+                </button>
+              </div>
+            )}
+          </div>
 
           <div className="pt-4 pb-2">
             <p className="text-xs text-[#666] px-3 uppercase tracking-wider font-medium">Analyze</p>
@@ -775,9 +1089,10 @@ function DiscoverPageContent() {
           </div>
 
           <div className="pt-4 pb-2">
-            <p className="text-xs text-[#666] px-3 uppercase tracking-wider font-medium">Boards</p>
+            <p className="text-xs text-[#666] px-3 uppercase tracking-wider font-medium">Workspace</p>
           </div>
-          <SidebarItem icon="board" label="My Ideas" onClick={() => router.push("/boards")} />
+          <SidebarItem icon="board" label="My First Board" active={activeWorkspace === "my-first-board"} onClick={() => { setActiveWorkspace("my-first-board"); setResearchTab("discover"); }} />
+          <SidebarItem icon="board" label="My Ideas" active={activeWorkspace === "my-ideas"} onClick={() => { setActiveWorkspace("my-ideas"); setResearchTab("discover"); }} />
         </div>
 
         <div className="p-3 border-t border-[#1a1a1a] space-y-1">
@@ -796,6 +1111,312 @@ function DiscoverPageContent() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto">
+        {activeWorkspace ? (
+          /* Workspace Board View */
+          <div className="flex-1 flex h-full">
+            {/* Board Left Panel */}
+            <div className={`flex flex-col ${rightPane ? "flex-1 min-w-0" : "flex-1"}`}>
+            {/* Board Header */}
+            <div className="sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-sm border-b border-[#1a1a1a] px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-semibold text-white">
+                  {activeWorkspace === "my-first-board" ? "My First Board" : "My Ideas"}
+                </h1>
+                {/* Add Button */}
+                <div className="relative">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setAddMenuOpen(!addMenuOpen); }}
+                    className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                  {addMenuOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-56 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl z-50 py-1.5" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => handleAddCard("link")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                        <Link2 className="w-4 h-4" />
+                        <span>Insert a link</span>
+                        <span className="ml-auto text-xs text-[#666]">⇧ L</span>
+                      </button>
+                      <button onClick={() => handleAddCard("document")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                        <FileText className="w-4 h-4" />
+                        <span>Create a document</span>
+                        <span className="ml-auto text-xs text-[#666]">D</span>
+                      </button>
+                      <button onClick={() => handleAddCard("card")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                        <Square className="w-4 h-4" />
+                        <span>Create a card</span>
+                        <span className="ml-auto text-xs text-[#666]">C</span>
+                      </button>
+                      <button onClick={() => handleAddCard("section")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                        <Layers className="w-4 h-4" />
+                        <span>Add section</span>
+                        <span className="ml-auto text-xs text-[#666]">S</span>
+                      </button>
+                      <button onClick={() => handleAddCard("reference")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                        <BookOpen className="w-4 h-4" />
+                        <span>Add reference</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setRightPane({ type: "chat" })} className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors">Chat</button>
+                <button className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors">Share</button>
+              </div>
+            </div>
+
+            {/* Board Content */}
+            <div className="flex-1 p-6">
+              {isLoadingWorkspace ? (
+                <div className="flex items-center justify-center py-20">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* First card - always shows board description */}
+                  <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 aspect-[4/3] flex flex-col overflow-hidden">
+                    {activeWorkspace === "my-ideas" ? (
+                      <p className="text-sm text-[#888]">This is a card. Cards are useful for capturing quick ideas or notes. Use this board to capture ideas, paste links, or save social posts.</p>
+                    ) : (
+                      <>
+                        <p className="text-xs text-[#888] mb-3">Your garden for ideas.<br />This is a document, and it lives inside a board.</p>
+                        <h3 className="text-xs font-semibold text-white mb-1">What you can do with boards</h3>
+                        <ul className="text-xs text-[#888] space-y-0.5 mb-3 list-disc list-inside">
+                          <li>Write content, newsletters, scripts, and more</li>
+                          <li>Add social posts, links, PDFs, and raw ideas</li>
+                          <li>Chat with a single item, or with the whole board at once</li>
+                        </ul>
+                        <h3 className="text-xs font-semibold text-white mb-1">Why boards</h3>
+                        <p className="text-xs text-[#888] mb-3">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, the Creators tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
+                        <h3 className="text-xs font-semibold text-white mb-1">Not sure where to start?</h3>
+                        <p className="text-xs text-[#888]">Use boards for the projects you already work on. A simple system: make one board each week and drop that week&apos;s content and ideas inside. It keeps everything organized without much effort.</p>
+                      </>
+                    )}
+                  </div>
+                  {/* User-created cards */}
+                  {workspaceCards.map((card) => (
+                    <div
+                      key={card.id}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setCardContextMenu({ card, x: e.clientX, y: e.clientY });
+                      }}
+                      className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 hover:border-[#3a3a3a] transition-colors cursor-pointer aspect-[4/3] flex flex-col"
+                    >
+                      <h3 className="text-sm font-medium text-white">{card.title}</h3>
+                      {card.content && <p className="text-xs text-[#888] mt-2 line-clamp-4 flex-1">{card.content}</p>}
+                      {card.url && <p className="text-xs text-blue-400 mt-2 truncate">{card.url}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            </div>{/* end Board Left Panel */}
+
+            {/* Right Pane - Split Screen */}
+            {rightPane && (
+              <div className="w-[480px] border-l border-[#1a1a1a] flex flex-col h-full bg-[#0a0a0a]">
+                {rightPane.type === "info" ? (
+                  /* Info Pane - Welcome/Board Info */
+                  <>
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a]">
+                      <span className="text-sm text-[#888]">New chat</span>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setRightPane(null)} className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6">
+                      <h1 className="text-2xl font-bold text-white mb-4">Welcome to Eden</h1>
+                      <p className="text-sm text-[#888] mb-6">Your garden for ideas.<br />This is a document, and it lives inside a board.</p>
+                      <h2 className="text-lg font-semibold text-white mb-3">What you can do with boards</h2>
+                      <ul className="text-sm text-[#888] space-y-2 mb-6 list-disc list-inside">
+                        <li>Write content, newsletters, scripts, and more</li>
+                        <li>Add social posts, links, PDFs, and raw ideas</li>
+                        <li>Chat with a single item, or with the whole board at once</li>
+                      </ul>
+                      <h2 className="text-lg font-semibold text-white mb-3">Why boards</h2>
+                      <p className="text-sm text-[#888] mb-6">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, the Creators tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
+                      <h2 className="text-lg font-semibold text-white mb-3">Not sure where to start?</h2>
+                      <p className="text-sm text-[#888] mb-6">Use boards for the projects you already work on. A simple system: make one board each week and drop that week&apos;s content and ideas inside. It keeps everything organized without much effort.</p>
+                      <h2 className="text-lg font-semibold text-white mb-3">Need a hand?</h2>
+                      <p className="text-sm text-[#888]">Join our Discord to talk branding, content, and ideas with other Eden creators: <span className="text-emerald-400">discord.gg/edendotso</span></p>
+                      <p className="text-sm text-[#888] mt-2">Run into a problem? Email us anytime at support@eden.so</p>
+                    </div>
+                  </>
+                ) : (
+                  /* Chat Pane - Chat with card context */
+                  <>
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a]">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-white">New chat</span>
+                        <svg className="w-3 h-3 text-[#666]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                        </button>
+                        <button className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>
+                        </button>
+                        <button className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
+                        </button>
+                        <button onClick={() => setRightPane(null)} className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex-1 flex flex-col items-center justify-center px-6">
+                      <div className="text-center mb-8">
+                        <span className="text-3xl mb-2 block">🧪</span>
+                        <h2 className="text-xl font-semibold text-white">What&apos;s the idea?</h2>
+                      </div>
+                      {/* Card context chip */}
+                      {rightPane.card && (
+                        <div className="flex items-center gap-2 mb-4 bg-[#1a1a1a] border border-[#2a2a2a] rounded-full px-3 py-1.5">
+                          <svg className="w-3 h-3 text-[#888]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={1.5} /></svg>
+                          <span className="text-xs text-[#888] max-w-[200px] truncate">{rightPane.card.title || rightPane.card.content || "This is a card..."}</span>
+                          <button onClick={() => setRightPane({ ...rightPane, card: undefined })} className="text-[#666] hover:text-white">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                      )}
+                      {/* Chat input */}
+                      <div className="w-full max-w-md">
+                        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-3">
+                          <textarea
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            placeholder="@ mention creators, or / to run a skill..."
+                            className="w-full bg-transparent text-sm text-white placeholder-[#666] resize-none focus:outline-none min-h-[60px]"
+                          />
+                          <div className="flex items-center justify-between mt-2">
+                            <button className="w-6 h-6 flex items-center justify-center rounded text-[#666] hover:text-white">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                            </button>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-[#666]">Eve Lite</span>
+                              <button className="w-6 h-6 flex items-center justify-center rounded text-[#666] hover:text-white">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                              </button>
+                              <button className="w-7 h-7 flex items-center justify-center rounded-full bg-[#2a2a2a] text-[#888] hover:bg-[#3a3a3a] hover:text-white transition-colors">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        {/* Quick action buttons */}
+                        <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
+                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#888] bg-[#1a1a1a] border border-[#2a2a2a] rounded-full hover:border-[#3a3a3a] hover:text-white transition-colors">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                            Start Writing
+                          </button>
+                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#888] bg-[#1a1a1a] border border-[#2a2a2a] rounded-full hover:border-[#3a3a3a] hover:text-white transition-colors">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                            Creator Research
+                          </button>
+                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#888] bg-[#1a1a1a] border border-[#2a2a2a] rounded-full hover:border-[#3a3a3a] hover:text-white transition-colors">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                            Topic Research
+                          </button>
+                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#888] bg-[#1a1a1a] border border-[#2a2a2a] rounded-full hover:border-[#3a3a3a] hover:text-white transition-colors">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            Watchlist Overview
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Card Context Menu */}
+            {cardContextMenu && (
+              <div
+                className="fixed z-50 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl py-1.5 w-56"
+                style={{
+                  top: Math.min(cardContextMenu.y, (typeof window !== "undefined" ? window.innerHeight : 768) - 320),
+                  left: Math.min(cardContextMenu.x, (typeof window !== "undefined" ? window.innerWidth : 1024) - 240),
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {activeWorkspace === "my-ideas" ? (
+                  /* My Ideas context menu */
+                  <>
+                    <button onClick={() => { setRightPane({ type: "chat", card: cardContextMenu.card }); setCardContextMenu(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 14.583 3 13.303 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                      <span>Chat with</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
+                      <span>Color</span>
+                    </button>
+                    <div className="my-1 border-t border-[#2a2a2a]" />
+                    <button onClick={() => handleDuplicateCard(cardContextMenu.card)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                      <span>Duplicate to Board</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                      <span>Move to Board</span>
+                    </button>
+                    <div className="my-1 border-t border-[#2a2a2a]" />
+                    <button onClick={() => handleDeleteCard(cardContextMenu.card.id)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-900/20 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                      <span>Delete</span>
+                    </button>
+                  </>
+                ) : (
+                  /* My First Board context menu */
+                  <>
+                    <button onClick={() => { setRightPane({ type: "info", card: cardContextMenu.card }); setCardContextMenu(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h7" /></svg>
+                      <span>Open in Pane</span>
+                      <span className="ml-auto text-xs text-[#666]">Alt ⇧</span>
+                    </button>
+                    <button onClick={() => { setRightPane({ type: "chat", card: cardContextMenu.card }); setCardContextMenu(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 14.583 3 13.303 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                      <span>Chat with</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                      <span>Download</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                      <span>Rename</span>
+                    </button>
+                    <div className="my-1 border-t border-[#2a2a2a]" />
+                    <button onClick={() => handleDuplicateCard(cardContextMenu.card)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                      <span>Duplicate to Board</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                      <span>Move to Board</span>
+                    </button>
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                      <BookOpen className="w-4 h-4" />
+                      <span>Reference on Board</span>
+                    </button>
+                    <div className="my-1 border-t border-[#2a2a2a]" />
+                    <button onClick={() => handleDeleteCard(cardContextMenu.card.id)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-900/20 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                      <span>Delete</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+        <>
         {/* Top Search Bar */}
         <div className="sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-sm border-b border-[#1a1a1a] px-6 py-3">
           <div className="flex items-center gap-3">
@@ -842,33 +1463,228 @@ function DiscoverPageContent() {
             </Button>
           </div>
 
-          {/* Filter Dropdown - Positioned absolutely like Eden */}
+          {/* Filter Dropdown - Eden style */}
           {showFilters && (
             <div
               ref={filterRef}
-              className="absolute right-6 top-16 z-50 w-[300px] max-h-[500px] overflow-y-auto scrollbar-hide bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-2xl p-4"
+              className="absolute right-6 top-16 z-50 w-[320px] max-h-[420px] overflow-y-auto scrollbar-hide bg-[#141414] border border-[#2a2a2a] rounded-xl shadow-2xl"
             >
-              <div className="space-y-5">
-                {/* Platforms */}
+              {/* Filter Header */}
+              <div className="sticky top-0 z-10 bg-[#141414] border-b border-[#2a2a2a] px-5 py-3 flex items-center justify-center">
+                <div className="flex items-center gap-2 text-xs text-[#888]">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                  </svg>
+                  <span className="text-white font-medium">All</span>
+                  <span>·</span>
+                  <span>Last 3 months</span>
+                  <span>·</span>
+                  <span>10×</span>
+                  <span>·</span>
+                  <svg className={`w-3 h-3 transition-transform rotate-180`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-6">
+                {/* PLATFORMS */}
                 <div>
-                  <p className="text-xs text-[#666] uppercase tracking-wider font-medium mb-2">Platforms</p>
-                  <div className="space-y-1.5">
+                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Platforms</p>
+                  <div className="space-y-1">
                     {PLATFORMS.map((platform) => (
                       <button
                         key={platform.id}
                         onClick={() => togglePlatform(platform.id)}
-                        className="w-full flex items-center justify-between p-2 rounded-md hover:bg-[#2a2a2a] transition-colors"
+                        className="w-full flex items-center justify-between px-2 py-2.5 rounded-lg hover:bg-[#1e1e1e] transition-colors"
                       >
-                        <div className="flex items-center gap-2">
-                          <span>{platform.icon}</span>
+                        <div className="flex items-center gap-3">
+                          <PlatformIcon id={platform.id} className="w-4 h-4 text-white" />
                           <span className="text-sm text-white">{platform.label}</span>
                         </div>
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                        <div className={`w-5 h-5 rounded flex items-center justify-center ${
                           selectedPlatforms.includes(platform.id)
-                            ? "bg-green-500 border-green-500"
-                            : "border-[#3a3a3a]"
+                            ? "bg-green-500"
+                            : "border border-[#3a3a3a]"
                         }`}>
                           {selectedPlatforms.includes(platform.id) && (
+                            <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between mt-2 px-2">
+                    <span className="text-xs text-[#666]">{selectedPlatforms.length} of {PLATFORMS.length} selected</span>
+                    <button
+                      onClick={() => setSelectedPlatforms(PLATFORMS.map((p) => p.id))}
+                      className="text-xs text-[#888] hover:text-white"
+                    >
+                      Select all
+                    </button>
+                  </div>
+                </div>
+
+                {/* FORMAT */}
+                <div>
+                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Format</p>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs text-[#888] mb-2 flex items-center gap-2">
+                        <PlatformIcon id="youtube" className="w-3.5 h-3.5 text-red-500" />
+                        YouTube
+                      </p>
+                      <div className="flex gap-2">
+                        {(["videos", "shorts", "all"] as const).map((fmt) => (
+                          <button
+                            key={fmt}
+                            onClick={() => setSelectedFormat(fmt as typeof selectedFormat)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                              selectedFormat === fmt
+                                ? "bg-[#2a2a2a] text-white"
+                                : "text-[#666] hover:text-[#888]"
+                            }`}
+                          >
+                            {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#888] mb-2 flex items-center gap-2">
+                        <PlatformIcon id="substack" className="w-3.5 h-3.5 text-orange-500" />
+                        Substack
+                      </p>
+                      <div className="flex gap-2">
+                        {(["articles", "notes", "all"] as const).map((fmt) => (
+                          <button
+                            key={`sub-${fmt}`}
+                            onClick={() => setSelectedFormat(fmt as typeof selectedFormat)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                              selectedFormat === fmt
+                                ? "bg-[#2a2a2a] text-white"
+                                : "text-[#666] hover:text-[#888]"
+                            }`}
+                          >
+                            {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#888] mb-2 flex items-center gap-2">
+                        <PlatformIcon id="instagram" className="w-3.5 h-3.5 text-pink-500" />
+                        Instagram
+                      </p>
+                      <div className="flex gap-2">
+                        {(["reels", "carousel", "photos", "all"] as const).map((fmt) => (
+                          <button
+                            key={`ig-${fmt}`}
+                            onClick={() => setSelectedFormat(fmt as typeof selectedFormat)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                              selectedFormat === fmt
+                                ? "bg-[#2a2a2a] text-white"
+                                : "text-[#666] hover:text-[#888]"
+                            }`}
+                          >
+                            {fmt === "carousel" ? "Carousels" : fmt.charAt(0).toUpperCase() + fmt.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-[#555] mt-3">Hide YouTube Shorts, Instagram Reels, or Substack Notes from the feed.</p>
+                </div>
+
+                {/* LANGUAGES */}
+                <div>
+                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Languages</p>
+                  <div className="flex flex-wrap gap-2">
+                    {LANGUAGES.map((lang) => (
+                      <button
+                        key={lang.id}
+                        onClick={() => setSelectedLanguage(lang.id)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                          selectedLanguage === lang.id
+                            ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
+                            : "border-[#2a2a2a] text-[#666] hover:border-[#3a3a3a] hover:text-[#888]"
+                        }`}
+                      >
+                        {lang.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-[11px] text-[#555]">1 selected. Posts in other languages are hidden.</span>
+                    <button className="text-[11px] text-[#888] hover:text-white ml-2 whitespace-nowrap">Show all</button>
+                  </div>
+                </div>
+
+                {/* FOLLOWERS */}
+                <div>
+                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Followers</p>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {FOLLOWER_RANGES.map((range) => (
+                      <button
+                        key={range.id}
+                        onClick={() => setSelectedFollowers(range.id)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                          selectedFollowers === range.id
+                            ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
+                            : "border-[#2a2a2a] text-[#666] hover:border-[#3a3a3a] hover:text-[#888]"
+                        }`}
+                      >
+                        {range.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] text-[#666] uppercase mb-1 block">Min</label>
+                      <input
+                        type="text"
+                        value={followerMin}
+                        onChange={(e) => setFollowerMin(e.target.value)}
+                        className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#3a3a3a]"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-[#666] uppercase mb-1 block">Max</label>
+                      <input
+                        type="text"
+                        value={followerMax}
+                        onChange={(e) => setFollowerMax(e.target.value)}
+                        className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#3a3a3a]"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-[#555] mt-2">Tip: type values like 20k, 1m, or leave blank for no bound.</p>
+                </div>
+
+                {/* MIN OUTLIER SCORE */}
+                <div>
+                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Min Outlier Score</p>
+                  <div className="space-y-1">
+                    {OUTLIER_RANGES.map((range) => (
+                      <button
+                        key={range.id}
+                        onClick={() => setSelectedOutlier(range.id)}
+                        className="w-full flex items-center justify-between px-2 py-2.5 rounded-lg hover:bg-[#1e1e1e] transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          <span className="text-sm text-white">{range.label}</span>
+                        </div>
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                          selectedOutlier === range.id
+                            ? "border-green-500 bg-green-500"
+                            : "border-[#3a3a3a]"
+                        }`}>
+                          {selectedOutlier === range.id && (
                             <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                             </svg>
@@ -877,147 +1693,35 @@ function DiscoverPageContent() {
                       </button>
                     ))}
                   </div>
-                  <div className="flex items-center justify-between mt-1.5">
-                    <span className="text-xs text-[#666]">{selectedPlatforms.length} of {PLATFORMS.length} selected</span>
-                    <button
-                      onClick={() => setSelectedPlatforms(PLATFORMS.map((p) => p.id))}
-                      className="text-xs text-blue-400 hover:text-blue-300"
-                    >
-                      Select all
-                    </button>
-                  </div>
                 </div>
 
-                {/* Format - YouTube */}
+                {/* POSTED WITHIN */}
                 <div>
-                  <p className="text-xs text-[#666] uppercase tracking-wider font-medium mb-2">Content Format</p>
-                  <div className="space-y-2.5">
-                    <div>
-                      <p className="text-xs text-[#888] mb-1.5 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                        YouTube
-                      </p>
-                      <div className="flex gap-1.5">
-                        {(["videos", "shorts", "all"] as const).map((fmt) => (
-                          <button
-                            key={fmt}
-                            onClick={() => setSelectedFormat(fmt === "shorts" ? "all" : fmt as "videos" | "all" | "articles")}
-                            className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
-                              selectedFormat === fmt || (fmt === "all" && selectedFormat === "shorts")
-                                ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
-                                : "border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a]"
-                            }`}
-                          >
-                            {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-[#888] mb-1.5 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
-                        Substack
-                      </p>
-                      <div className="flex gap-1.5">
-                        {(["articles", "notes", "all"] as const).map((fmt) => (
-                          <button
-                            key={fmt}
-                            onClick={() => setSelectedFormat(fmt === "notes" ? "all" : fmt as "videos" | "all" | "articles")}
-                            className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
-                              selectedFormat === fmt || (fmt === "all" && selectedFormat === "notes")
-                                ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
-                                : "border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a]"
-                            }`}
-                          >
-                            {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-[#888] mb-1.5 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-pink-500"></span>
-                        Instagram
-                      </p>
-                      <div className="flex gap-1.5">
-                        {(["reels", "carousel", "photos", "all"] as const).map((fmt) => (
-                          <button
-                            key={fmt}
-                            onClick={() => setSelectedFormat(fmt === "carousel" || fmt === "photos" ? "all" : fmt as "videos" | "all" | "articles")}
-                            className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
-                              selectedFormat === fmt || (fmt === "all" && (selectedFormat === "carousel" || selectedFormat === "photos"))
-                                ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
-                                : "border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a]"
-                            }`}
-                          >
-                            {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Language */}
-                <div>
-                  <p className="text-xs text-[#666] uppercase tracking-wider font-medium mb-2">Language</p>
-                  <div className="max-h-40 overflow-y-auto scrollbar-hide space-y-0.5">
-                    {LANGUAGES.map((lang) => (
+                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Posted Within</p>
+                  <div className="space-y-1">
+                    {TIME_PERIODS.map((period) => (
                       <button
-                        key={lang.id}
-                        onClick={() => setSelectedLanguage(lang.id)}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-colors ${
-                          selectedLanguage === lang.id
-                            ? "bg-[#2a2a2a] text-white"
-                            : "text-[#888] hover:bg-[#2a2a2a] hover:text-white"
-                        }`}
+                        key={period.id}
+                        onClick={() => setSelectedTimePeriod(period.id)}
+                        className="w-full flex items-center justify-between px-2 py-2.5 rounded-lg hover:bg-[#1e1e1e] transition-colors"
                       >
-                        {lang.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Outlier Score */}
-                <div>
-                  <p className="text-xs text-[#666] uppercase tracking-wider font-medium mb-2">Outlier Score</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {OUTLIER_RANGES.map((range) => (
-                      <button
-                        key={range.id}
-                        onClick={() => setSelectedOutlier(range.id)}
-                        className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
-                          selectedOutlier === range.id
-                            ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
-                            : "border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a]"
-                        }`}
-                      >
-                        {range.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Timeline */}
-                <div>
-                  <p className="text-xs text-[#666] uppercase tracking-wider font-medium mb-2">Time Period</p>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {([
-                      { value: "day", label: "24 Hours" },
-                      { value: "week", label: "7 Days" },
-                      { value: "month", label: "30 Days" },
-                      { value: "year", label: "1 Year" },
-                    ] as { value: TimeRange; label: string }[]).map((range) => (
-                      <button
-                        key={range.value}
-                        onClick={() => setTimeRange(range.value)}
-                        className={`text-xs py-1.5 px-2 rounded-md border transition-colors ${
-                          timeRange === range.value
-                            ? "bg-blue-600/20 border-blue-500/50 text-blue-400 font-medium"
-                            : "bg-[#0a0a0a] border-[#2a2a2a] text-[#888] hover:bg-[#2a2a2a] hover:border-[#3a3a3a]"
-                        }`}
-                      >
-                        {range.label}
+                        <div className="flex items-center gap-3">
+                          <svg className="w-4 h-4 text-[#888]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-sm text-white">{period.label}</span>
+                        </div>
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                          selectedTimePeriod === period.id
+                            ? "border-green-500 bg-green-500"
+                            : "border-[#3a3a3a]"
+                        }`}>
+                          {selectedTimePeriod === period.id && (
+                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -1057,46 +1761,42 @@ function DiscoverPageContent() {
                 <button
                   key={category}
                   onClick={() => setSelectedCategory(category)}
-                  className={`group relative px-4 py-1.5 rounded-full text-sm border whitespace-nowrap transition-colors ${
+                  onMouseEnter={() => setHoveredCategory(category)}
+                  onMouseLeave={() => setHoveredCategory(null)}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm border whitespace-nowrap transition-colors ${
                     selectedCategory === category
                       ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
                       : "border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a] hover:text-white"
                   }`}
                 >
-                  <span className="flex items-center gap-1.5">
-                    {category === "All" ? (
-                      <>
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                        </svg>
-                        All
-                      </>
-                    ) : (
-                      category
-                    )}
-                  </span>
-                  {/* Trash icon for all categories except "All" */}
-                  {category !== "All" && (
-                    <span
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // Remove from active categories (built-in)
-                        setActiveCategories((prev) => prev.filter((c) => c !== category));
-                        // Remove from custom categories (user-added)
-                        setCustomCategories((prev) => prev.filter((c) => c !== category));
-                        // Always reset to "All" when deleting current category
-                        if (selectedCategory === category) {
-                          setSelectedCategory("All");
-                        }
-                      }}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500/90 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10"
-                      title="Remove category"
-                    >
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                  {category === "All" ? (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                       </svg>
-                    </span>
+                      All
+                    </>
+                  ) : (
+                    <>
+                      {category}
+                      {hoveredCategory === category && (
+                        <span
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setActiveCategories((prev) => prev.filter((c) => c !== category));
+                            setCustomCategories((prev) => prev.filter((c) => c !== category));
+                            if (selectedCategory === category) {
+                              setSelectedCategory("All");
+                            }
+                          }}
+                          className="ml-1 flex items-center justify-center text-[#555] hover:text-red-400 transition-colors"
+                          title="Remove category"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </span>
+                      )}
+                    </>
                   )}
                 </button>
               ))}
@@ -1217,39 +1917,60 @@ function DiscoverPageContent() {
 
               {/* Masonry Content Grid */}
               {activeTab === "all" && (
-                <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
-                  {unifiedItemsMemo.map((item) =>
-                    item.contentType === "video" ? (
-                      <div key={item.id} className="break-inside-avoid mb-4">
-                        <VideoCard key={item.id} video={item} onSave={openBoardPickerForVideo} />
-                      </div>
-                    ) : (
-                      <div key={item.id} className="break-inside-avoid mb-4">
-                        <ContentCard key={item.id} item={item} onSave={openBoardPickerForContent} />
-                      </div>
-                    )
+                <>
+                  <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
+                    {unifiedItemsMemo.slice(0, displayCount).map((item) =>
+                      item.contentType === "video" ? (
+                        <div key={item.id} className="break-inside-avoid mb-4">
+                          <VideoCard key={item.id} video={item} onSave={openBoardPickerForVideo} />
+                        </div>
+                      ) : (
+                        <div key={item.id} className="break-inside-avoid mb-4">
+                          <ContentCard key={item.id} item={item} onSave={openBoardPickerForContent} />
+                        </div>
+                      )
+                    )}
+                  </div>
+                  {displayCount < unifiedItemsMemo.length && (
+                    <div ref={loadMoreRef} className="flex justify-center py-8">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/40" />
+                    </div>
                   )}
-                </div>
+                </>
               )}
 
               {activeTab === "videos" && (
-                <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
-                  {sortedVideos.map((video) => (
-                    <div key={video.id} className="break-inside-avoid mb-4">
-                      <VideoCard video={video} onSave={openBoardPickerForVideo} />
+                <>
+                  <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
+                    {sortedVideos.slice(0, displayCount).map((video) => (
+                      <div key={video.id} className="break-inside-avoid mb-4">
+                        <VideoCard video={video} onSave={openBoardPickerForVideo} />
+                      </div>
+                    ))}
+                  </div>
+                  {displayCount < sortedVideos.length && (
+                    <div ref={loadMoreRef} className="flex justify-center py-8">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/40" />
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
 
               {activeTab === "articles" && (
-                <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
-                  {sortedArticles.map((item) => (
-                    <div key={item.id} className="break-inside-avoid mb-4">
-                      <ContentCard item={item} onSave={openBoardPickerForContent} />
+                <>
+                  <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
+                    {sortedArticles.slice(0, displayCount).map((item) => (
+                      <div key={item.id} className="break-inside-avoid mb-4">
+                        <ContentCard item={item} onSave={openBoardPickerForContent} />
+                      </div>
+                    ))}
+                  </div>
+                  {displayCount < sortedArticles.length && (
+                    <div ref={loadMoreRef} className="flex justify-center py-8">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/40" />
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
 
               {/* Empty */}
@@ -1355,6 +2076,8 @@ function DiscoverPageContent() {
             <ChannelTabContent />
           )}
         </div>
+        </>
+        )}
       </div>
 
       <BoardPicker
@@ -1437,15 +2160,17 @@ function SidebarItem({
 
 export default function DiscoverPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
-        </div>
-      }
-    >
-      <DiscoverPageContent />
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+          </div>
+        }
+      >
+        <DiscoverPageContent />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 
@@ -1455,8 +2180,8 @@ function ChannelTabContent() {
   const { isAuthenticated, user } = useAuth();
   const { channel: connectedChannel, isConnecting, isConnected, connectChannel, disconnectChannel, refreshChannel } = useConnectChannel();
   const [isLoading, setIsLoading] = useState(false);
-  const [videos, setVideos] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
+  const [videos, setVideos] = useState<{ id: string; title: string; thumbnail: string; channelTitle: string; channelId: string; description: string; publishedAt: string; viewCount: number; likeCount: number; commentCount: number; duration: string; tags: string[] }[]>([]);
+  const [stats, setStats] = useState<{ totalVideos: number; avgViews: number; engagementRate: number; avgPerformance: number } | null>(null);
 
   useEffect(() => {
     if (isConnected && connectedChannel?.channelId) {
@@ -1472,7 +2197,7 @@ function ChannelTabContent() {
       const result = await response.json();
       if (result.success && result.data) {
         // Transform API response to flat structure
-        const transformedVideos = (result.data.videos || []).map((v: any) => ({
+        const transformedVideos = (result.data.videos || []).map((v: Record<string, any>) => ({
           id: v.id,
           title: v.snippet?.title || "",
           thumbnail: v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.default?.url || "",
@@ -1490,10 +2215,10 @@ function ChannelTabContent() {
 
         // Calculate stats
         const totalVideos = transformedVideos.length;
-        const totalViews = transformedVideos.reduce((sum: number, v: any) => sum + (v.viewCount || 0), 0);
+        const totalViews = transformedVideos.reduce((sum: number, v: { viewCount: number }) => sum + (v.viewCount || 0), 0);
         const avgViews = totalVideos > 0 ? Math.round(totalViews / totalVideos) : 0;
-        const totalLikes = transformedVideos.reduce((sum: number, v: any) => sum + (v.likeCount || 0), 0);
-        const totalComments = transformedVideos.reduce((sum: number, v: any) => sum + (v.commentCount || 0), 0);
+        const totalLikes = transformedVideos.reduce((sum: number, v: { likeCount: number }) => sum + (v.likeCount || 0), 0);
+        const totalComments = transformedVideos.reduce((sum: number, v: { commentCount: number }) => sum + (v.commentCount || 0), 0);
         const engagementRate = totalViews > 0 ? Math.round(((totalLikes + totalComments) / totalViews) * 1000) / 10 : 0;
 
         setStats({

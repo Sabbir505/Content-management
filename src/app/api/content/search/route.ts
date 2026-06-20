@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       const bypassCache = searchParams.get("fresh") === "true";
       const results = await withTimeout(
         fetchTrendingContent(sources as any, limit, bypassCache),
-        10000,
+        20000,
         "Trending content fetch"
       );
       return NextResponse.json({

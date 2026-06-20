@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 import { collection, doc, setDoc, getDoc, getDocs, query, orderBy, serverTimestamp, deleteDoc, updateDoc, increment } from "firebase/firestore";
 import type { BoardCard, Board } from "@/types/board";
+import { validateUserAccess } from "@/lib/api-auth";
 
 // POST /api/boards/{boardId}/cards - Create card
 export async function POST(request: NextRequest, { params }: { params: Promise<{ boardId: string }> }) {
@@ -13,6 +14,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!userId || !card) {
       return NextResponse.json({ success: false, error: "userId and card are required" }, { status: 400 });
     }
+
+    const authError = validateUserAccess(request, userId);
+    if (authError) return authError;
 
     const cardId = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -57,6 +61,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!userId) {
       return NextResponse.json({ success: false, error: "userId is required" }, { status: 400 });
     }
+
+    const authError = validateUserAccess(request, userId);
+    if (authError) return authError;
 
     const cardsSnapshot = await getDocs(
       query(

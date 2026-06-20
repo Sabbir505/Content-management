@@ -2,11 +2,11 @@ import { ContentItem, ContentSearchResult } from "@/types/content";
 import { fetchHackerNewsStories, searchHackerNewsByTopic } from "./hackernews";
 import { fetchRedditPosts, searchRedditPosts } from "./reddit";
 import { fetchDevToArticles, searchDevToArticles } from "./devto";
-import { fetchGoogleNewsViaRSS2JSON, fetchGoogleNewsRSS } from "./googlenews";
+import { searchSubstackByTopic, fetchTrendingSubstack } from "./substack";
 import { calculateContentDiscoveryScore } from "../discovery-score";
 import * as memoryCache from "@/lib/quality/cache";
 
-export type ContentSource = "hackernews" | "reddit" | "devto" | "googlenews";
+export type ContentSource = "hackernews" | "reddit" | "devto" | "substack" | "x" | "instagram" | "tiktok" | "linkedin";
 
 export interface ContentSearchOptions {
   query: string;
@@ -14,6 +14,7 @@ export interface ContentSearchOptions {
   limit?: number;
   subreddit?: string;
   devToTag?: string;
+  substackPublication?: string;
   bypassCache?: boolean;
   timeRange?: "day" | "week" | "month" | "year";
 }
@@ -60,7 +61,7 @@ function withSourceTimeout<T>(promise: Promise<T>, ms: number, source: string): 
 }
 
 export async function searchContent(options: ContentSearchOptions): Promise<ContentSearchResult[]> {
-  const { query, sources = ["hackernews", "reddit", "devto", "googlenews"], limit = 20, timeRange = "week" } = options;
+  const { query, sources = ["hackernews", "reddit", "devto", "substack"], limit = 20, timeRange = "month" } = options;
 
   // Check in-memory cache (skip if fresh requested via bypass)
   const bypassCache = options.bypassCache === true;
@@ -124,13 +125,13 @@ export async function searchContent(options: ContentSearchOptions): Promise<Cont
     );
   }
 
-  if (sources.includes("googlenews")) {
+  if (sources.includes("substack")) {
     promises.push(
-      withSourceTimeout(fetchGoogleNewsRSS(query, limit), sourceTimeout, "googlenews").catch((error) => {
-        console.warn(`[Content] Google News failed for "${query}":`, error.message);
+      withSourceTimeout(searchSubstackByTopic(query, limit), 15000, "substack").catch((error) => {
+        console.warn(`[Content] Substack failed for "${query}":`, error.message);
         return {
           items: [],
-          source: "googlenews",
+          source: "substack",
           fromCache: false,
           fetchedAt: new Date().toISOString(),
           error: error.message,
@@ -138,6 +139,11 @@ export async function searchContent(options: ContentSearchOptions): Promise<Cont
       })
     );
   }
+
+  // X, Instagram, TikTok, LinkedIn are excluded from default search
+  // because these platforms block server-side requests from cloud IPs.
+  // They are available via the direct /api/content/scrape endpoint for
+  // client-side or proxy-based fetching.
 
   const settledResults = await Promise.allSettled(promises);
 
@@ -166,7 +172,7 @@ export async function searchContent(options: ContentSearchOptions): Promise<Cont
 }
 
 export async function fetchTrendingContent(sources?: ContentSource[], limit = 20, bypassCache = false): Promise<ContentSearchResult[]> {
-  const allSources = sources || ["hackernews", "reddit", "devto", "googlenews"];
+  const allSources = sources || ["hackernews", "reddit", "devto", "substack"];
 
   // Check in-memory cache (skip if fresh requested)
   const cacheKey = buildMemoryCacheKey("trending", allSources);
@@ -219,11 +225,11 @@ export async function fetchTrendingContent(sources?: ContentSource[], limit = 20
     );
   }
 
-  if (allSources.includes("googlenews")) {
+  if (allSources.includes("substack")) {
     promises.push(
-      withSourceTimeout(fetchGoogleNewsRSS("AI technology", limit), sourceTimeout, "googlenews").catch((error) => ({
+      withSourceTimeout(fetchTrendingSubstack(limit), 15000, "substack").catch((error) => ({
         items: [],
-        source: "googlenews",
+        source: "substack",
         fromCache: false,
         fetchedAt: new Date().toISOString(),
         error: error.message,
