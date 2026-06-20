@@ -122,6 +122,7 @@ function DiscoverPageContent() {
     "Entertainment",
   ]);
   const [showAddCategory, setShowAddCategory] = useState(false);
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
   const [newCategory, setNewCategory] = useState("");
   // Creators tab state
   const [trackedCreators, setTrackedCreators] = useState<TrackedCreator[]>([]);
@@ -781,9 +782,10 @@ function DiscoverPageContent() {
           </div>
 
           <div className="pt-4 pb-2">
-            <p className="text-xs text-[#666] px-3 uppercase tracking-wider font-medium">Boards</p>
+            <p className="text-xs text-[#666] px-3 uppercase tracking-wider font-medium">Workspace</p>
           </div>
-          <SidebarItem icon="board" label="My Ideas" onClick={() => router.push("/boards")} />
+          <SidebarItem icon="board" label="My First Board" onClick={() => router.push("/boards")} />
+          <SidebarItem icon="board" label="My Ideas" onClick={() => router.push("/boards?board=ideas")} />
         </div>
 
         <div className="p-3 border-t border-[#1a1a1a] space-y-1">
@@ -1063,6 +1065,8 @@ function DiscoverPageContent() {
                 <button
                   key={category}
                   onClick={() => setSelectedCategory(category)}
+                  onMouseEnter={() => setHoveredCategory(category)}
+                  onMouseLeave={() => setHoveredCategory(null)}
                   className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm border whitespace-nowrap transition-colors ${
                     selectedCategory === category
                       ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
@@ -1079,21 +1083,23 @@ function DiscoverPageContent() {
                   ) : (
                     <>
                       {category}
-                      <span
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setActiveCategories((prev) => prev.filter((c) => c !== category));
-                          setCustomCategories((prev) => prev.filter((c) => c !== category));
-                          if (selectedCategory === category) {
-                            setSelectedCategory("All");
-                          }
-                        }}
-                        className="ml-1 flex items-center justify-center text-[#555] hover:text-red-400 transition-colors"
-                        title="Remove category"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </span>
+                      {hoveredCategory === category && (
+                        <span
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setActiveCategories((prev) => prev.filter((c) => c !== category));
+                            setCustomCategories((prev) => prev.filter((c) => c !== category));
+                            if (selectedCategory === category) {
+                              setSelectedCategory("All");
+                            }
+                          }}
+                          className="ml-1 flex items-center justify-center text-[#555] hover:text-red-400 transition-colors"
+                          title="Remove category"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </span>
+                      )}
                     </>
                   )}
                 </button>

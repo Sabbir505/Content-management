@@ -233,9 +233,11 @@ export default function HomePage() {
           <SidebarItem icon="chart" label="Creator Posts" onClick={() => router.push("/creators")} />
 
           <div className="pt-4 pb-2">
-            <p className="text-xs text-[#666] px-3 uppercase tracking-wider font-medium">Boards</p>
+            <p className="text-xs text-[#666] px-3 uppercase tracking-wider font-medium">Workspace</p>
           </div>
-          {boards.slice(0, 3).map((board) => (
+          <SidebarItem icon="board" label="My First Board" onClick={() => router.push("/boards")} />
+          <SidebarItem icon="board" label="My Ideas" onClick={() => router.push("/boards?board=ideas")} />
+          {boards.filter(b => b.name !== "My First Board" && b.name !== "My Ideas").slice(0, 3).map((board) => (
             <SidebarItem
               key={board.id}
               icon="board"
@@ -243,9 +245,6 @@ export default function HomePage() {
               onClick={() => router.push(`/boards?board=${board.id}`)}
             />
           ))}
-          {boards.length === 0 && (
-            <SidebarItem icon="board" label="My Ideas" onClick={() => router.push("/boards")} />
-          )}
         </div>
 
         {/* Bottom Actions */}
