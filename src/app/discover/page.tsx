@@ -1037,30 +1037,28 @@ function DiscoverPageContent() {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
                 </div>
               ) : workspaceCards.length === 0 ? (
-                <div className="max-w-lg">
-                  <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 aspect-[4/3] flex flex-col">
                     {activeWorkspace === "my-ideas" ? (
                       <p className="text-sm text-[#888]">This is a card. Cards are useful for capturing quick ideas or notes. Use this board to capture ideas, paste links, or save social posts.</p>
                     ) : (
                       <>
-                        <h2 className="text-lg font-semibold text-white mb-2">Welcome to your board</h2>
-                        <p className="text-sm text-[#888] mb-4">This is a document, and it lives inside a board.</p>
-                        <h3 className="text-sm font-semibold text-white mb-2">What you can do with boards</h3>
-                        <ul className="text-sm text-[#888] space-y-1 mb-4 list-disc list-inside">
+                        <h2 className="text-sm font-semibold text-white mb-2">Welcome to your board</h2>
+                        <p className="text-xs text-[#888] mb-3">This is a document, and it lives inside a board.</p>
+                        <h3 className="text-xs font-semibold text-white mb-1">What you can do with boards</h3>
+                        <ul className="text-xs text-[#888] space-y-0.5 mb-3 list-disc list-inside">
                           <li>Write content, newsletters, scripts, and more</li>
                           <li>Add social posts, links, PDFs, and raw ideas</li>
                           <li>Chat with a single item, or with the whole board at once</li>
                         </ul>
-                        <h3 className="text-sm font-semibold text-white mb-2">Why boards</h3>
-                        <p className="text-sm text-[#888] mb-4">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
-                        <h3 className="text-sm font-semibold text-white mb-2">Not sure where to start?</h3>
-                        <p className="text-sm text-[#888]">Use boards for the projects you already work on. A simple system: make one board each week and drop that week&apos;s content and ideas inside. It keeps everything organized without much effort.</p>
+                        <h3 className="text-xs font-semibold text-white mb-1">Why boards</h3>
+                        <p className="text-xs text-[#888] line-clamp-3">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
                       </>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {workspaceCards.map((card) => (
                     <div
                       key={card.id}
@@ -1068,11 +1066,11 @@ function DiscoverPageContent() {
                         e.preventDefault();
                         setCardContextMenu({ card, x: e.clientX, y: e.clientY });
                       }}
-                      className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 hover:border-[#3a3a3a] transition-colors cursor-pointer"
+                      className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 hover:border-[#3a3a3a] transition-colors cursor-pointer aspect-[4/3] flex flex-col"
                     >
                       <h3 className="text-sm font-medium text-white">{card.title}</h3>
-                      {card.content && <p className="text-xs text-[#888] mt-1 line-clamp-2">{card.content}</p>}
-                      {card.url && <p className="text-xs text-blue-400 mt-1 truncate">{card.url}</p>}
+                      {card.content && <p className="text-xs text-[#888] mt-2 line-clamp-4 flex-1">{card.content}</p>}
+                      {card.url && <p className="text-xs text-blue-400 mt-2 truncate">{card.url}</p>}
                     </div>
                   ))}
                 </div>
