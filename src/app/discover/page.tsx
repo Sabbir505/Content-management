@@ -139,6 +139,9 @@ function DiscoverPageContent() {
   const [activeTab, setActiveTab] = useState<ContentType>("all");
   const [researchTab, setResearchTab] = useState<ResearchTab>("discover");
   const [sortBy, setSortBy] = useState<SortOption>("top");
+  const [displayCount, setDisplayCount] = useState(16);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>("month");
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [boardPickerOpen, setBoardPickerOpen] = useState(false);
@@ -257,6 +260,7 @@ function DiscoverPageContent() {
 
     setVideos([]);
     setContentItems([]);
+    setDisplayCount(16);
 
     const abortController = new AbortController();
     fetchCountRef.current += 1;
@@ -281,6 +285,23 @@ function DiscoverPageContent() {
       abortController.abort();
     };
   }, [userId, timeRange, selectedCategory]);
+
+  // Infinite scroll: load more items when scrolling near bottom
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isLoadingMore && !isLoadingVideos && !isLoadingContent) {
+          setIsLoadingMore(true);
+          setDisplayCount((prev) => prev + 12);
+          setTimeout(() => setIsLoadingMore(false), 300);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    const el = loadMoreRef.current;
+    if (el) observer.observe(el);
+    return () => { if (el) observer.unobserve(el); };
+  }, [isLoadingMore, isLoadingVideos, isLoadingContent]);
 
   // Load chat sessions when dropdown opens
   useEffect(() => {
@@ -524,7 +545,7 @@ function DiscoverPageContent() {
       }
       const timeoutId = setTimeout(() => controller.abort(), 45000);
 
-      const response = await fetch(`/api/content/search?query=${encodeURIComponent(query)}&limit=20`, {
+      const response = await fetch(`/api/content/search?query=${encodeURIComponent(query)}&limit=40`, {
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -755,10 +776,6 @@ function DiscoverPageContent() {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter((v) => v.title.toLowerCase().includes(q) || (v.channelTitle || "").toLowerCase().includes(q));
     }
-    // Category filter
-    if (selectedCategory !== "All") {
-      filtered = filtered.filter((v) => v.title.toLowerCase().includes(selectedCategory.toLowerCase()));
-    }
     // Outlier filter
     if (selectedOutlier !== "any") {
       const outlierMap: Record<string, number> = { "3x": 3, "5x": 5, "10x": 10, "20x": 20 };
@@ -812,10 +829,6 @@ function DiscoverPageContent() {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter((item) => item.title.toLowerCase().includes(q) || (item.author || "").toLowerCase().includes(q));
-    }
-    // Category filter
-    if (selectedCategory !== "All") {
-      filtered = filtered.filter((item) => item.title.toLowerCase().includes(selectedCategory.toLowerCase()));
     }
     // Platform filter — map content sources to selected platforms
     // Direct matches: substack, instagram, tiktok, linkedin
@@ -877,13 +890,6 @@ function DiscoverPageContent() {
           return bVelocity - aVelocity;
         });
         break;
-      case "top":
-        combined.sort((a, b) => {
-          const aScore = a.contentType === "video" ? (a.viewCount || 0) : (a.score || 0);
-          const bScore = b.contentType === "video" ? (b.viewCount || 0) : (b.score || 0);
-          return bScore - aScore;
-        });
-        break;
       case "recent":
         combined.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
         break;
@@ -894,7 +900,9 @@ function DiscoverPageContent() {
           return bComments - aComments;
         });
         break;
+      case "top":
       default:
+        // Best items first: sort by discoveryScore (combines engagement + recency)
         combined.sort((a, b) => b.discoveryScore - a.discoveryScore);
     }
 
@@ -1909,39 +1917,60 @@ function DiscoverPageContent() {
 
               {/* Masonry Content Grid */}
               {activeTab === "all" && (
-                <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
-                  {unifiedItemsMemo.map((item) =>
-                    item.contentType === "video" ? (
-                      <div key={item.id} className="break-inside-avoid mb-4">
-                        <VideoCard key={item.id} video={item} onSave={openBoardPickerForVideo} />
-                      </div>
-                    ) : (
-                      <div key={item.id} className="break-inside-avoid mb-4">
-                        <ContentCard key={item.id} item={item} onSave={openBoardPickerForContent} />
-                      </div>
-                    )
+                <>
+                  <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
+                    {unifiedItemsMemo.slice(0, displayCount).map((item) =>
+                      item.contentType === "video" ? (
+                        <div key={item.id} className="break-inside-avoid mb-4">
+                          <VideoCard key={item.id} video={item} onSave={openBoardPickerForVideo} />
+                        </div>
+                      ) : (
+                        <div key={item.id} className="break-inside-avoid mb-4">
+                          <ContentCard key={item.id} item={item} onSave={openBoardPickerForContent} />
+                        </div>
+                      )
+                    )}
+                  </div>
+                  {displayCount < unifiedItemsMemo.length && (
+                    <div ref={loadMoreRef} className="flex justify-center py-8">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/40" />
+                    </div>
                   )}
-                </div>
+                </>
               )}
 
               {activeTab === "videos" && (
-                <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
-                  {sortedVideos.map((video) => (
-                    <div key={video.id} className="break-inside-avoid mb-4">
-                      <VideoCard video={video} onSave={openBoardPickerForVideo} />
+                <>
+                  <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
+                    {sortedVideos.slice(0, displayCount).map((video) => (
+                      <div key={video.id} className="break-inside-avoid mb-4">
+                        <VideoCard video={video} onSave={openBoardPickerForVideo} />
+                      </div>
+                    ))}
+                  </div>
+                  {displayCount < sortedVideos.length && (
+                    <div ref={loadMoreRef} className="flex justify-center py-8">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/40" />
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
 
               {activeTab === "articles" && (
-                <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
-                  {sortedArticles.map((item) => (
-                    <div key={item.id} className="break-inside-avoid mb-4">
-                      <ContentCard item={item} onSave={openBoardPickerForContent} />
+                <>
+                  <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
+                    {sortedArticles.slice(0, displayCount).map((item) => (
+                      <div key={item.id} className="break-inside-avoid mb-4">
+                        <ContentCard item={item} onSave={openBoardPickerForContent} />
+                      </div>
+                    ))}
+                  </div>
+                  {displayCount < sortedArticles.length && (
+                    <div ref={loadMoreRef} className="flex justify-center py-8">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/40" />
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
 
               {/* Empty */}
