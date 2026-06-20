@@ -176,6 +176,10 @@ function DiscoverPageContent() {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [cardContextMenu, setCardContextMenu] = useState<{ card: BoardCard; x: number; y: number } | null>(null);
 
+  // Right pane state (split screen)
+  const [rightPane, setRightPane] = useState<{ type: "info" | "chat"; card?: BoardCard } | null>(null);
+  const [chatInput, setChatInput] = useState("");
+
   // Load categories from localStorage after hydration
   useEffect(() => {
     try {
@@ -971,7 +975,9 @@ function DiscoverPageContent() {
       <div className="flex-1 overflow-y-auto">
         {activeWorkspace ? (
           /* Workspace Board View */
-          <div className="flex-1 flex flex-col h-full">
+          <div className="flex-1 flex h-full">
+            {/* Board Left Panel */}
+            <div className={`flex flex-col ${rightPane ? "flex-1 min-w-0" : "flex-1"}`}>
             {/* Board Header */}
             <div className="sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-sm border-b border-[#1a1a1a] px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -1019,7 +1025,7 @@ function DiscoverPageContent() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors">Chat</button>
+                <button onClick={() => setRightPane({ type: "chat" })} className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors">Chat</button>
                 <button className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors">Share</button>
               </div>
             </div>
@@ -1072,6 +1078,127 @@ function DiscoverPageContent() {
                 </div>
               )}
             </div>
+            </div>{/* end Board Left Panel */}
+
+            {/* Right Pane - Split Screen */}
+            {rightPane && (
+              <div className="w-[480px] border-l border-[#1a1a1a] flex flex-col h-full bg-[#0a0a0a]">
+                {rightPane.type === "info" ? (
+                  /* Info Pane - Welcome/Board Info */
+                  <>
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a]">
+                      <span className="text-sm text-[#888]">New chat</span>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setRightPane(null)} className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6">
+                      <h1 className="text-2xl font-bold text-white mb-4">Welcome to Eden</h1>
+                      <p className="text-sm text-[#888] mb-6">Your garden for ideas.<br />This is a document, and it lives inside a board.</p>
+                      <h2 className="text-lg font-semibold text-white mb-3">What you can do with boards</h2>
+                      <ul className="text-sm text-[#888] space-y-2 mb-6 list-disc list-inside">
+                        <li>Write content, newsletters, scripts, and more</li>
+                        <li>Add social posts, links, PDFs, and raw ideas</li>
+                        <li>Chat with a single item, or with the whole board at once</li>
+                      </ul>
+                      <h2 className="text-lg font-semibold text-white mb-3">Why boards</h2>
+                      <p className="text-sm text-[#888] mb-6">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, the Creators tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
+                      <h2 className="text-lg font-semibold text-white mb-3">Not sure where to start?</h2>
+                      <p className="text-sm text-[#888] mb-6">Use boards for the projects you already work on. A simple system: make one board each week and drop that week&apos;s content and ideas inside. It keeps everything organized without much effort.</p>
+                      <h2 className="text-lg font-semibold text-white mb-3">Need a hand?</h2>
+                      <p className="text-sm text-[#888]">Join our Discord to talk branding, content, and ideas with other Eden creators: <span className="text-emerald-400">discord.gg/edendotso</span></p>
+                      <p className="text-sm text-[#888] mt-2">Run into a problem? Email us anytime at support@eden.so</p>
+                    </div>
+                  </>
+                ) : (
+                  /* Chat Pane - Chat with card context */
+                  <>
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a]">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-white">New chat</span>
+                        <svg className="w-3 h-3 text-[#666]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                        </button>
+                        <button className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>
+                        </button>
+                        <button className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
+                        </button>
+                        <button onClick={() => setRightPane(null)} className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex-1 flex flex-col items-center justify-center px-6">
+                      <div className="text-center mb-8">
+                        <span className="text-3xl mb-2 block">🧪</span>
+                        <h2 className="text-xl font-semibold text-white">What&apos;s the idea?</h2>
+                      </div>
+                      {/* Card context chip */}
+                      {rightPane.card && (
+                        <div className="flex items-center gap-2 mb-4 bg-[#1a1a1a] border border-[#2a2a2a] rounded-full px-3 py-1.5">
+                          <svg className="w-3 h-3 text-[#888]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={1.5} /></svg>
+                          <span className="text-xs text-[#888] max-w-[200px] truncate">{rightPane.card.title || rightPane.card.content || "This is a card..."}</span>
+                          <button onClick={() => setRightPane({ ...rightPane, card: undefined })} className="text-[#666] hover:text-white">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                      )}
+                      {/* Chat input */}
+                      <div className="w-full max-w-md">
+                        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-3">
+                          <textarea
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            placeholder="@ mention creators, or / to run a skill..."
+                            className="w-full bg-transparent text-sm text-white placeholder-[#666] resize-none focus:outline-none min-h-[60px]"
+                          />
+                          <div className="flex items-center justify-between mt-2">
+                            <button className="w-6 h-6 flex items-center justify-center rounded text-[#666] hover:text-white">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                            </button>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-[#666]">Eve Lite</span>
+                              <button className="w-6 h-6 flex items-center justify-center rounded text-[#666] hover:text-white">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                              </button>
+                              <button className="w-7 h-7 flex items-center justify-center rounded-full bg-[#2a2a2a] text-[#888] hover:bg-[#3a3a3a] hover:text-white transition-colors">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        {/* Quick action buttons */}
+                        <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
+                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#888] bg-[#1a1a1a] border border-[#2a2a2a] rounded-full hover:border-[#3a3a3a] hover:text-white transition-colors">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                            Start Writing
+                          </button>
+                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#888] bg-[#1a1a1a] border border-[#2a2a2a] rounded-full hover:border-[#3a3a3a] hover:text-white transition-colors">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                            Creator Research
+                          </button>
+                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#888] bg-[#1a1a1a] border border-[#2a2a2a] rounded-full hover:border-[#3a3a3a] hover:text-white transition-colors">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                            Topic Research
+                          </button>
+                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#888] bg-[#1a1a1a] border border-[#2a2a2a] rounded-full hover:border-[#3a3a3a] hover:text-white transition-colors">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            Watchlist Overview
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Card Context Menu */}
             {cardContextMenu && (
@@ -1083,7 +1210,7 @@ function DiscoverPageContent() {
                 {activeWorkspace === "my-ideas" ? (
                   /* My Ideas context menu */
                   <>
-                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                    <button onClick={() => { setRightPane({ type: "chat", card: cardContextMenu.card }); setCardContextMenu(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 14.583 3 13.303 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                       <span>Chat with</span>
                     </button>
@@ -1109,12 +1236,12 @@ function DiscoverPageContent() {
                 ) : (
                   /* My First Board context menu */
                   <>
-                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                    <button onClick={() => { setRightPane({ type: "info", card: cardContextMenu.card }); setCardContextMenu(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h7" /></svg>
                       <span>Open in Pane</span>
                       <span className="ml-auto text-xs text-[#666]">Alt ⇧</span>
                     </button>
-                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                    <button onClick={() => { setRightPane({ type: "chat", card: cardContextMenu.card }); setCardContextMenu(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 14.583 3 13.303 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                       <span>Chat with</span>
                     </button>
