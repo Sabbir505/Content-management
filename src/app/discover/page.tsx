@@ -298,6 +298,7 @@ function DiscoverPageContent() {
       setVideos(scoredVideos);
       setFromCache(result.data.fromCache || false);
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Failed to load videos");
       setVideos([]);
     } finally {
@@ -309,9 +310,12 @@ function DiscoverPageContent() {
   async function fetchContent(query: string, abortSignal?: AbortSignal) {
     setIsLoadingContent(true);
     try {
+      if (abortSignal?.aborted) return;
+
       const controller = new AbortController();
       if (abortSignal) {
-        abortSignal.addEventListener("abort", () => controller.abort());
+        const onAbort = () => controller.abort();
+        abortSignal.addEventListener("abort", onAbort, { once: true });
       }
       const timeoutId = setTimeout(() => controller.abort(), 45000);
 
@@ -343,6 +347,7 @@ function DiscoverPageContent() {
         setContentItems(scoredItems);
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       console.error("Content fetch error:", err);
     } finally {
       setIsLoadingContent(false);
