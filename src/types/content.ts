@@ -2,11 +2,14 @@ export interface ContentItem {
   id: string;
   title: string;
   url: string;
-  source: "hackernews" | "reddit" | "devto" | "googlenews";
+  source: "hackernews" | "reddit" | "devto" | "googlenews" | "x" | "substack" | "instagram" | "tiktok" | "linkedin";
   author: string;
   authorUrl?: string;
   score: number; // upvotes, likes, etc.
   commentCount?: number;
+  shareCount?: number;
+  likeCount?: number;
+  outlierScore?: number;
   publishedAt: string;
   thumbnail?: string;
   description?: string;
