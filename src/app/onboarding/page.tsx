@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -119,19 +118,23 @@ export default function OnboardingPage() {
         </CardHeader>
         <CardContent className="space-y-6">
           {step === 1 && (
-            <RadioGroup value={creatorType} onValueChange={setCreatorType} className="space-y-4">
+            <div className="space-y-4">
               {CREATOR_TYPES.map((type) => (
-                <RadioGroupItem
+                <button
                   key={type.value}
-                  value={type.value}
-                  id={type.value}
-                  className="flex flex-col items-start rounded-lg border-2 border-muted bg-white p-4 hover:bg-gray-50 data-checked:border-blue-600 cursor-pointer w-full h-auto"
+                  type="button"
+                  onClick={() => setCreatorType(type.value)}
+                  className={`flex flex-col items-start rounded-lg border-2 p-4 w-full text-left transition-colors ${
+                    creatorType === type.value
+                      ? "border-blue-600 bg-blue-50 text-blue-700"
+                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
                 >
                   <span className="font-semibold">{type.label}</span>
                   <span className="text-sm text-gray-500">{type.description}</span>
-                </RadioGroupItem>
+                </button>
               ))}
-            </RadioGroup>
+            </div>
           )}
 
           {step === 2 && (
