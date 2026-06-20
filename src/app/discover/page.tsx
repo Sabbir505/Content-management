@@ -39,42 +39,52 @@ type TimeRange = "day" | "week" | "month" | "year";
 type ResearchTab = "discover" | "creators" | "lists" | "channel";
 
 const PLATFORMS = [
+  { id: "twitter", label: "X / Twitter", icon: "𝕏" },
   { id: "youtube", label: "YouTube", icon: "▶️" },
-  { id: "hackernews", label: "Hacker News", icon: "🟠" },
-  { id: "reddit", label: "Reddit", icon: "🔴" },
-  { id: "devto", label: "DEV.to", icon: "🟣" },
-  { id: "googlenews", label: "Google News", icon: "🔵" },
+  { id: "substack", label: "Substack", icon: "📝" },
+  { id: "instagram", label: "Instagram", icon: "📷" },
+  { id: "tiktok", label: "TikTok", icon: "🎵" },
+  { id: "linkedin", label: "LinkedIn", icon: "💼" },
 ];
 
 const LANGUAGES = [
   { id: "en", label: "English" },
   { id: "es", label: "Spanish" },
+  { id: "pt", label: "Portuguese" },
   { id: "fr", label: "French" },
   { id: "de", label: "German" },
-  { id: "pt", label: "Portuguese" },
-  { id: "hi", label: "Hindi" },
+  { id: "it", label: "Italian" },
+  { id: "nl", label: "Dutch" },
   { id: "ja", label: "Japanese" },
   { id: "ko", label: "Korean" },
-  { id: "ar", label: "Arabic" },
   { id: "zh", label: "Chinese" },
+  { id: "hi", label: "Hindi" },
+  { id: "ar", label: "Arabic" },
 ];
 
 const FOLLOWER_RANGES = [
   { id: "any", label: "Any" },
-  { id: "1k", label: "1K+" },
-  { id: "10k", label: "10K+" },
-  { id: "100k", label: "100K+" },
-  { id: "1m", label: "1M+" },
-  { id: "10m", label: "10M+" },
+  { id: "1k-20k", label: "1K \u2013 20K" },
+  { id: "20k-100k", label: "20K \u2013 100K" },
+  { id: "100k-1m", label: "100K \u2013 1M" },
+  { id: "1m-8m", label: "1M \u2013 8M" },
+  { id: "8m+", label: "8M+" },
 ];
 
 const OUTLIER_RANGES = [
   { id: "any", label: "Any" },
-  { id: "2x", label: "2x+" },
-  { id: "5x", label: "5x+" },
-  { id: "10x", label: "10x+" },
-  { id: "50x", label: "50x+" },
-  { id: "100x", label: "100x+" },
+  { id: "3x", label: "3\u00d7 or more" },
+  { id: "5x", label: "5\u00d7 or more" },
+  { id: "10x", label: "10\u00d7 or more" },
+  { id: "20x", label: "20\u00d7 or more" },
+];
+
+const TIME_PERIODS = [
+  { id: "week", label: "Week" },
+  { id: "month", label: "Month" },
+  { id: "3months", label: "3 months" },
+  { id: "year", label: "Year" },
+  { id: "all", label: "All time" },
 ];
 
 function isQuotaError(error: string | undefined): boolean {
@@ -117,11 +127,14 @@ function DiscoverPageContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["youtube", "hackernews", "reddit", "devto", "googlenews"]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["twitter", "youtube", "substack", "instagram", "tiktok", "linkedin"]);
   const [selectedFormat, setSelectedFormat] = useState<"all" | "videos" | "articles" | "shorts" | "notes" | "reels" | "carousel" | "photos">("all");
   const [selectedLanguage, setSelectedLanguage] = useState("en");
   const [selectedFollowers, setSelectedFollowers] = useState("any");
-  const [selectedOutlier, setSelectedOutlier] = useState("any");
+  const [followerMin, setFollowerMin] = useState("50000");
+  const [followerMax, setFollowerMax] = useState("8000000");
+  const [selectedOutlier, setSelectedOutlier] = useState("10x");
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState("3months");
   // Initialize with defaults — load from localStorage in useEffect after hydration
   const [customCategories, setCustomCategories] = useState<string[]>([]);
   const [activeCategories, setActiveCategories] = useState<string[]>([
@@ -1362,33 +1375,228 @@ function DiscoverPageContent() {
             </Button>
           </div>
 
-          {/* Filter Dropdown - Positioned absolutely like Eden */}
+          {/* Filter Dropdown - Eden style */}
           {showFilters && (
             <div
               ref={filterRef}
-              className="absolute right-6 top-16 z-50 w-[300px] max-h-[500px] overflow-y-auto scrollbar-hide bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-2xl p-4"
+              className="absolute right-6 top-16 z-50 w-[320px] max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide bg-[#141414] border border-[#2a2a2a] rounded-xl shadow-2xl"
             >
-              <div className="space-y-5">
-                {/* Platforms */}
+              {/* Filter Header */}
+              <div className="sticky top-0 z-10 bg-[#141414] border-b border-[#2a2a2a] px-5 py-3 flex items-center justify-center">
+                <div className="flex items-center gap-2 text-xs text-[#888]">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                  </svg>
+                  <span className="text-white font-medium">All</span>
+                  <span>·</span>
+                  <span>Last 3 months</span>
+                  <span>·</span>
+                  <span>10×</span>
+                  <span>·</span>
+                  <svg className={`w-3 h-3 transition-transform rotate-180`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-6">
+                {/* PLATFORMS */}
                 <div>
-                  <p className="text-xs text-[#666] uppercase tracking-wider font-medium mb-2">Platforms</p>
-                  <div className="space-y-1.5">
+                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Platforms</p>
+                  <div className="space-y-1">
                     {PLATFORMS.map((platform) => (
                       <button
                         key={platform.id}
                         onClick={() => togglePlatform(platform.id)}
-                        className="w-full flex items-center justify-between p-2 rounded-md hover:bg-[#2a2a2a] transition-colors"
+                        className="w-full flex items-center justify-between px-2 py-2.5 rounded-lg hover:bg-[#1e1e1e] transition-colors"
                       >
-                        <div className="flex items-center gap-2">
-                          <span>{platform.icon}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-base">{platform.icon}</span>
                           <span className="text-sm text-white">{platform.label}</span>
                         </div>
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                        <div className={`w-5 h-5 rounded flex items-center justify-center ${
                           selectedPlatforms.includes(platform.id)
-                            ? "bg-green-500 border-green-500"
-                            : "border-[#3a3a3a]"
+                            ? "bg-green-500"
+                            : "border border-[#3a3a3a]"
                         }`}>
                           {selectedPlatforms.includes(platform.id) && (
+                            <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between mt-2 px-2">
+                    <span className="text-xs text-[#666]">{selectedPlatforms.length} of {PLATFORMS.length} selected</span>
+                    <button
+                      onClick={() => setSelectedPlatforms(PLATFORMS.map((p) => p.id))}
+                      className="text-xs text-[#888] hover:text-white"
+                    >
+                      Select all
+                    </button>
+                  </div>
+                </div>
+
+                {/* FORMAT */}
+                <div>
+                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Format</p>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs text-[#888] mb-2 flex items-center gap-2">
+                        <span className="text-red-500">▶️</span>
+                        YouTube
+                      </p>
+                      <div className="flex gap-2">
+                        {(["videos", "shorts", "all"] as const).map((fmt) => (
+                          <button
+                            key={fmt}
+                            onClick={() => setSelectedFormat(fmt as typeof selectedFormat)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                              selectedFormat === fmt
+                                ? "bg-[#2a2a2a] text-white"
+                                : "text-[#666] hover:text-[#888]"
+                            }`}
+                          >
+                            {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#888] mb-2 flex items-center gap-2">
+                        <span className="text-orange-500">📝</span>
+                        Substack
+                      </p>
+                      <div className="flex gap-2">
+                        {(["articles", "notes", "all"] as const).map((fmt) => (
+                          <button
+                            key={`sub-${fmt}`}
+                            onClick={() => setSelectedFormat(fmt as typeof selectedFormat)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                              selectedFormat === fmt
+                                ? "bg-[#2a2a2a] text-white"
+                                : "text-[#666] hover:text-[#888]"
+                            }`}
+                          >
+                            {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#888] mb-2 flex items-center gap-2">
+                        <span className="text-pink-500">📷</span>
+                        Instagram
+                      </p>
+                      <div className="flex gap-2">
+                        {(["reels", "carousel", "photos", "all"] as const).map((fmt) => (
+                          <button
+                            key={`ig-${fmt}`}
+                            onClick={() => setSelectedFormat(fmt as typeof selectedFormat)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                              selectedFormat === fmt
+                                ? "bg-[#2a2a2a] text-white"
+                                : "text-[#666] hover:text-[#888]"
+                            }`}
+                          >
+                            {fmt === "carousel" ? "Carousels" : fmt.charAt(0).toUpperCase() + fmt.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-[#555] mt-3">Hide YouTube Shorts, Instagram Reels, or Substack Notes from the feed.</p>
+                </div>
+
+                {/* LANGUAGES */}
+                <div>
+                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Languages</p>
+                  <div className="flex flex-wrap gap-2">
+                    {LANGUAGES.map((lang) => (
+                      <button
+                        key={lang.id}
+                        onClick={() => setSelectedLanguage(lang.id)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                          selectedLanguage === lang.id
+                            ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
+                            : "border-[#2a2a2a] text-[#666] hover:border-[#3a3a3a] hover:text-[#888]"
+                        }`}
+                      >
+                        {lang.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-[11px] text-[#555]">1 selected. Posts in other languages are hidden.</span>
+                    <button className="text-[11px] text-[#888] hover:text-white ml-2 whitespace-nowrap">Show all</button>
+                  </div>
+                </div>
+
+                {/* FOLLOWERS */}
+                <div>
+                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Followers</p>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {FOLLOWER_RANGES.map((range) => (
+                      <button
+                        key={range.id}
+                        onClick={() => setSelectedFollowers(range.id)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                          selectedFollowers === range.id
+                            ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
+                            : "border-[#2a2a2a] text-[#666] hover:border-[#3a3a3a] hover:text-[#888]"
+                        }`}
+                      >
+                        {range.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] text-[#666] uppercase mb-1 block">Min</label>
+                      <input
+                        type="text"
+                        value={followerMin}
+                        onChange={(e) => setFollowerMin(e.target.value)}
+                        className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#3a3a3a]"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-[#666] uppercase mb-1 block">Max</label>
+                      <input
+                        type="text"
+                        value={followerMax}
+                        onChange={(e) => setFollowerMax(e.target.value)}
+                        className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#3a3a3a]"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-[#555] mt-2">Tip: type values like 20k, 1m, or leave blank for no bound.</p>
+                </div>
+
+                {/* MIN OUTLIER SCORE */}
+                <div>
+                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Min Outlier Score</p>
+                  <div className="space-y-1">
+                    {OUTLIER_RANGES.map((range) => (
+                      <button
+                        key={range.id}
+                        onClick={() => setSelectedOutlier(range.id)}
+                        className="w-full flex items-center justify-between px-2 py-2.5 rounded-lg hover:bg-[#1e1e1e] transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          <span className="text-sm text-white">{range.label}</span>
+                        </div>
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                          selectedOutlier === range.id
+                            ? "border-green-500 bg-green-500"
+                            : "border-[#3a3a3a]"
+                        }`}>
+                          {selectedOutlier === range.id && (
                             <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                             </svg>
@@ -1397,147 +1605,35 @@ function DiscoverPageContent() {
                       </button>
                     ))}
                   </div>
-                  <div className="flex items-center justify-between mt-1.5">
-                    <span className="text-xs text-[#666]">{selectedPlatforms.length} of {PLATFORMS.length} selected</span>
-                    <button
-                      onClick={() => setSelectedPlatforms(PLATFORMS.map((p) => p.id))}
-                      className="text-xs text-blue-400 hover:text-blue-300"
-                    >
-                      Select all
-                    </button>
-                  </div>
                 </div>
 
-                {/* Format - YouTube */}
+                {/* POSTED WITHIN */}
                 <div>
-                  <p className="text-xs text-[#666] uppercase tracking-wider font-medium mb-2">Content Format</p>
-                  <div className="space-y-2.5">
-                    <div>
-                      <p className="text-xs text-[#888] mb-1.5 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                        YouTube
-                      </p>
-                      <div className="flex gap-1.5">
-                        {(["videos", "shorts", "all"] as const).map((fmt) => (
-                          <button
-                            key={fmt}
-                            onClick={() => setSelectedFormat(fmt === "shorts" ? "all" : fmt as "videos" | "all" | "articles")}
-                            className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
-                              selectedFormat === fmt || (fmt === "all" && selectedFormat === "shorts")
-                                ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
-                                : "border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a]"
-                            }`}
-                          >
-                            {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-[#888] mb-1.5 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
-                        Substack
-                      </p>
-                      <div className="flex gap-1.5">
-                        {(["articles", "notes", "all"] as const).map((fmt) => (
-                          <button
-                            key={fmt}
-                            onClick={() => setSelectedFormat(fmt === "notes" ? "all" : fmt as "videos" | "all" | "articles")}
-                            className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
-                              selectedFormat === fmt || (fmt === "all" && selectedFormat === "notes")
-                                ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
-                                : "border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a]"
-                            }`}
-                          >
-                            {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-[#888] mb-1.5 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-pink-500"></span>
-                        Instagram
-                      </p>
-                      <div className="flex gap-1.5">
-                        {(["reels", "carousel", "photos", "all"] as const).map((fmt) => (
-                          <button
-                            key={fmt}
-                            onClick={() => setSelectedFormat(fmt === "carousel" || fmt === "photos" ? "all" : fmt as "videos" | "all" | "articles")}
-                            className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
-                              selectedFormat === fmt || (fmt === "all" && (selectedFormat === "carousel" || selectedFormat === "photos"))
-                                ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
-                                : "border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a]"
-                            }`}
-                          >
-                            {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Language */}
-                <div>
-                  <p className="text-xs text-[#666] uppercase tracking-wider font-medium mb-2">Language</p>
-                  <div className="max-h-40 overflow-y-auto scrollbar-hide space-y-0.5">
-                    {LANGUAGES.map((lang) => (
+                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Posted Within</p>
+                  <div className="space-y-1">
+                    {TIME_PERIODS.map((period) => (
                       <button
-                        key={lang.id}
-                        onClick={() => setSelectedLanguage(lang.id)}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-colors ${
-                          selectedLanguage === lang.id
-                            ? "bg-[#2a2a2a] text-white"
-                            : "text-[#888] hover:bg-[#2a2a2a] hover:text-white"
-                        }`}
+                        key={period.id}
+                        onClick={() => setSelectedTimePeriod(period.id)}
+                        className="w-full flex items-center justify-between px-2 py-2.5 rounded-lg hover:bg-[#1e1e1e] transition-colors"
                       >
-                        {lang.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Outlier Score */}
-                <div>
-                  <p className="text-xs text-[#666] uppercase tracking-wider font-medium mb-2">Outlier Score</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {OUTLIER_RANGES.map((range) => (
-                      <button
-                        key={range.id}
-                        onClick={() => setSelectedOutlier(range.id)}
-                        className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
-                          selectedOutlier === range.id
-                            ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
-                            : "border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a]"
-                        }`}
-                      >
-                        {range.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Timeline */}
-                <div>
-                  <p className="text-xs text-[#666] uppercase tracking-wider font-medium mb-2">Time Period</p>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {([
-                      { value: "day", label: "24 Hours" },
-                      { value: "week", label: "7 Days" },
-                      { value: "month", label: "30 Days" },
-                      { value: "year", label: "1 Year" },
-                    ] as { value: TimeRange; label: string }[]).map((range) => (
-                      <button
-                        key={range.value}
-                        onClick={() => setTimeRange(range.value)}
-                        className={`text-xs py-1.5 px-2 rounded-md border transition-colors ${
-                          timeRange === range.value
-                            ? "bg-blue-600/20 border-blue-500/50 text-blue-400 font-medium"
-                            : "bg-[#0a0a0a] border-[#2a2a2a] text-[#888] hover:bg-[#2a2a2a] hover:border-[#3a3a3a]"
-                        }`}
-                      >
-                        {range.label}
+                        <div className="flex items-center gap-3">
+                          <svg className="w-4 h-4 text-[#888]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-sm text-white">{period.label}</span>
+                        </div>
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                          selectedTimePeriod === period.id
+                            ? "border-green-500 bg-green-500"
+                            : "border-[#3a3a3a]"
+                        }`}>
+                          {selectedTimePeriod === period.id && (
+                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
                       </button>
                     ))}
                   </div>
