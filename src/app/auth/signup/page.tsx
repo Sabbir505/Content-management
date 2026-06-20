@@ -3,13 +3,12 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { signUpWithEmail, signInWithGoogle } from "@/lib/auth";
+import { useAuth, getFirebaseAuthErrorMessage } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-
 import Link from "next/link";
-import { useAuth } from "@/hooks/useAuth";
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -35,7 +34,7 @@ export default function SignUpPage() {
       await signUpWithEmail(email, password, displayName);
       router.push("/onboarding");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign up");
+      setError(err instanceof Error ? getFirebaseAuthErrorMessage(err) : "Failed to sign up");
     } finally {
       setIsLoadingAuth(false);
     }
@@ -46,10 +45,18 @@ export default function SignUpPage() {
     setError("");
 
     try {
-      await signInWithGoogle();
-      router.push("/onboarding");
+      const result = await signInWithGoogle();
+      // Check if user already completed onboarding
+      const { doc, getDoc } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      const profileSnap = await getDoc(doc(db, "users", result.user.uid));
+      if (profileSnap.exists() && profileSnap.data()?.onboardingComplete) {
+        router.push("/discover");
+      } else {
+        router.push("/onboarding");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign up with Google");
+      setError(err instanceof Error ? getFirebaseAuthErrorMessage(err) : "Failed to sign up with Google");
     } finally {
       setIsLoadingAuth(false);
     }

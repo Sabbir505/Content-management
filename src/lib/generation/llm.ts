@@ -1,9 +1,3 @@
-import { z } from "zod";
-import { NextRequest, NextResponse } from "next/server";
-import { evaluateAndDeliver } from "@/lib/quality/regeneration";
-import { enrichGenerationContext } from "@/lib/quality/grounding/grounding-pipeline";
-import type { ScoredOutput, OutputType } from "@/lib/quality/types";
-
 const API_URL = process.env.KIMI_API_ENDPOINT || "https://ai2.18.show/v1/chat/completions";
 const API_KEY = process.env.KIMI_API_KEY;
 const MODEL = process.env.KIMI_MODEL || "DeepSeek-V4-Pro";

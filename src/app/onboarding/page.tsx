@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
@@ -79,7 +78,7 @@ export default function OnboardingPage() {
           onboardingComplete: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-         Tier: "starter",
+          tier: "starter",
           creditsUsed: 0,
           creditsLimit: 300,
         });
@@ -156,18 +155,31 @@ export default function OnboardingPage() {
           )}
 
           {step === 3 && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {PLATFORMS.map((platform) => (
-                <div key={platform.value} className="flex items-center space-x-3">
-                  <Checkbox
-                    id={platform.value}
-                    checked={selectedPlatforms.includes(platform.value)}
-                    onCheckedChange={() => togglePlatform(platform.value)}
-                  />
-                  <Label htmlFor={platform.value} className="font-medium">
-                    {platform.label}
-                  </Label>
-                </div>
+                <button
+                  key={platform.value}
+                  type="button"
+                  onClick={() => togglePlatform(platform.value)}
+                  className={`flex items-center gap-3 rounded-lg border-2 p-3 w-full text-left transition-colors ${
+                    selectedPlatforms.includes(platform.value)
+                      ? "border-blue-600 bg-blue-50 text-blue-700"
+                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  <div className={`w-5 h-5 rounded flex items-center justify-center border-2 ${
+                    selectedPlatforms.includes(platform.value)
+                      ? "border-blue-600 bg-blue-600"
+                      : "border-gray-300"
+                  }`}>
+                    {selectedPlatforms.includes(platform.value) && (
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                  <span className="font-medium">{platform.label}</span>
+                </button>
               ))}
             </div>
           )}

@@ -18,6 +18,7 @@ import { useConnectChannel } from "@/hooks/useConnectChannel";
 import type { YouTubeSearchError } from "@/lib/quality/types";
 import type { TrackedCreator } from "@/types/creator";
 import { Trash2, Link2, FileText, Square, Layers, BookOpen } from "lucide-react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -124,7 +125,7 @@ function getAgeHours(publishedAt: string): number {
 }
 
 function DiscoverPageContent() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [videos, setVideos] = useState<VideoWithOutlier[]>([]);
@@ -138,7 +139,7 @@ function DiscoverPageContent() {
   const [activeTab, setActiveTab] = useState<ContentType>("all");
   const [researchTab, setResearchTab] = useState<ResearchTab>("discover");
   const [sortBy, setSortBy] = useState<SortOption>("top");
-  const [timeRange, setTimeRange] = useState<TimeRange>("week");
+  const [timeRange, setTimeRange] = useState<TimeRange>("month");
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [boardPickerOpen, setBoardPickerOpen] = useState(false);
   const [pendingSaveVideo, setPendingSaveVideo] = useState<VideoWithOutlier | null>(null);
@@ -176,7 +177,7 @@ function DiscoverPageContent() {
   const [creatorUrl, setCreatorUrl] = useState("");
   const [isTrackingCreator, setIsTrackingCreator] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
-  const fetchInProgressRef = useRef(false);
+  const fetchCountRef = useRef(0);
 
   const queryParam = searchParams.get("query");
   const userId = user?.uid;
@@ -253,13 +254,12 @@ function DiscoverPageContent() {
   // Initial load: fetch trending content based on selected category
   useEffect(() => {
     if (!userId) return;
-    if (fetchInProgressRef.current) return;
 
     setVideos([]);
     setContentItems([]);
 
     const abortController = new AbortController();
-    fetchInProgressRef.current = true;
+    fetchCountRef.current += 1;
 
     // When "All" is selected, fetch content for all active categories combined
     let query: string;
@@ -279,7 +279,6 @@ function DiscoverPageContent() {
 
     return () => {
       abortController.abort();
-      fetchInProgressRef.current = false;
     };
   }, [userId, timeRange, selectedCategory]);
 
@@ -510,7 +509,6 @@ function DiscoverPageContent() {
       setVideos([]);
     } finally {
       setIsLoadingVideos(false);
-      fetchInProgressRef.current = false;
     }
   }
 
@@ -558,7 +556,6 @@ function DiscoverPageContent() {
       console.error("Content fetch error:", err);
     } finally {
       setIsLoadingContent(false);
-      fetchInProgressRef.current = false;
     }
   }
 
@@ -710,10 +707,18 @@ function DiscoverPageContent() {
 
   function handleRetry() {
     setQuotaError(null);
-    const query = selectedCategory !== "All" ? selectedCategory : searchQuery || "trending";
+    let retryQuery: string;
+    if (searchQuery.trim()) {
+      retryQuery = searchQuery.trim();
+    } else if (selectedCategory !== "All") {
+      retryQuery = selectedCategory;
+    } else {
+      const allCats = [...activeCategories, ...customCategories];
+      retryQuery = allCats.length > 0 ? allCats.join(" | ") : "trending";
+    }
     const controller = new AbortController();
-    fetchVideos(query, controller.signal);
-    fetchContent(query, controller.signal);
+    fetchVideos(retryQuery, controller.signal);
+    fetchContent(retryQuery, controller.signal);
   }
 
   function handleSearchSubmit(e: React.FormEvent) {
@@ -756,7 +761,8 @@ function DiscoverPageContent() {
     }
     // Outlier filter
     if (selectedOutlier !== "any") {
-      const minOutlier = parseInt(selectedOutlier);
+      const outlierMap: Record<string, number> = { "3x": 3, "5x": 5, "10x": 10, "20x": 20 };
+      const minOutlier = outlierMap[selectedOutlier] || 1;
       filtered = filtered.filter((v) => (v.outlierScore || 0) >= minOutlier);
     }
     // Platform filter - check if youtube is selected
@@ -785,11 +791,20 @@ function DiscoverPageContent() {
         return seconds > 60;
       });
     }
-    // Time range filter (client-side fallback for cached data)
-    const cutoffDate = getTimeRangeCutoff(timeRange);
-    filtered = filtered.filter((v) => new Date(v.publishedAt).getTime() >= cutoffDate.getTime());
+    // Time period filter (from filter panel)
+    const timePeriodMs: Record<string, number> = {
+      week: 7 * 24 * 60 * 60 * 1000,
+      month: 30 * 24 * 60 * 60 * 1000,
+      "3months": 90 * 24 * 60 * 60 * 1000,
+      year: 365 * 24 * 60 * 60 * 1000,
+      all: Infinity,
+    };
+    const periodCutoff = Date.now() - (timePeriodMs[selectedTimePeriod] || timePeriodMs["3months"]);
+    if (periodCutoff !== -Infinity) {
+      filtered = filtered.filter((v) => new Date(v.publishedAt).getTime() >= periodCutoff);
+    }
     return filtered;
-  }, [videos, searchQuery, selectedCategory, selectedOutlier, selectedPlatforms, selectedFormat, timeRange]);
+  }, [videos, searchQuery, selectedCategory, selectedOutlier, selectedPlatforms, selectedFormat, selectedTimePeriod]);
 
   const filteredArticles = useMemo(() => {
     let filtered = [...contentItems];
@@ -802,13 +817,27 @@ function DiscoverPageContent() {
     if (selectedCategory !== "All") {
       filtered = filtered.filter((item) => item.title.toLowerCase().includes(selectedCategory.toLowerCase()));
     }
-    // Platform filter
-    filtered = filtered.filter((item) => selectedPlatforms.includes(item.source));
-    // Time range filter
-    const cutoffDate = getTimeRangeCutoff(timeRange);
-    filtered = filtered.filter((item) => new Date(item.publishedAt).getTime() >= cutoffDate.getTime());
+    // Platform filter — map content sources to platform categories
+    // Content sources (hackernews, reddit, devto, googlenews) are not 1:1 with platform IDs
+    // so we only filter articles out if ALL non-YouTube platforms are deselected
+    const hasAnyContentPlatform = selectedPlatforms.some((p) => p !== "youtube");
+    if (!hasAnyContentPlatform) {
+      filtered = [];
+    }
+    // Time period filter (from filter panel)
+    const timePeriodMs: Record<string, number> = {
+      week: 7 * 24 * 60 * 60 * 1000,
+      month: 30 * 24 * 60 * 60 * 1000,
+      "3months": 90 * 24 * 60 * 60 * 1000,
+      year: 365 * 24 * 60 * 60 * 1000,
+      all: Infinity,
+    };
+    const periodCutoff = Date.now() - (timePeriodMs[selectedTimePeriod] || timePeriodMs["3months"]);
+    if (periodCutoff !== -Infinity) {
+      filtered = filtered.filter((item) => new Date(item.publishedAt).getTime() >= periodCutoff);
+    }
     return filtered;
-  }, [contentItems, searchQuery, selectedCategory, selectedPlatforms, timeRange]);
+  }, [contentItems, searchQuery, selectedCategory, selectedPlatforms, selectedTimePeriod]);
 
   const unifiedItemsMemo = useMemo(() => {
     const scoredVideos = filteredVideos.map((video) => ({
@@ -909,6 +938,23 @@ function DiscoverPageContent() {
     }
     return sorted;
   }, [filteredArticles, sortBy]);
+
+  // Auth guard — redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/auth/login");
+    }
+  }, [authLoading, user, router]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+      </div>
+    );
+  }
+
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex">
@@ -1274,7 +1320,10 @@ function DiscoverPageContent() {
             {cardContextMenu && (
               <div
                 className="fixed z-50 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl py-1.5 w-56"
-                style={{ top: cardContextMenu.y, left: cardContextMenu.x }}
+                style={{
+                  top: Math.min(cardContextMenu.y, (typeof window !== "undefined" ? window.innerHeight : 768) - 320),
+                  left: Math.min(cardContextMenu.x, (typeof window !== "undefined" ? window.innerWidth : 1024) - 240),
+                }}
                 onClick={(e) => e.stopPropagation()}
               >
                 {activeWorkspace === "my-ideas" ? (
@@ -2070,15 +2119,17 @@ function SidebarItem({
 
 export default function DiscoverPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
-        </div>
-      }
-    >
-      <DiscoverPageContent />
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+          </div>
+        }
+      >
+        <DiscoverPageContent />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 
@@ -2088,8 +2139,8 @@ function ChannelTabContent() {
   const { isAuthenticated, user } = useAuth();
   const { channel: connectedChannel, isConnecting, isConnected, connectChannel, disconnectChannel, refreshChannel } = useConnectChannel();
   const [isLoading, setIsLoading] = useState(false);
-  const [videos, setVideos] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
+  const [videos, setVideos] = useState<{ id: string; title: string; thumbnail: string; channelTitle: string; channelId: string; description: string; publishedAt: string; viewCount: number; likeCount: number; commentCount: number; duration: string; tags: string[] }[]>([]);
+  const [stats, setStats] = useState<{ totalVideos: number; avgViews: number; engagementRate: number; avgPerformance: number } | null>(null);
 
   useEffect(() => {
     if (isConnected && connectedChannel?.channelId) {
@@ -2105,7 +2156,7 @@ function ChannelTabContent() {
       const result = await response.json();
       if (result.success && result.data) {
         // Transform API response to flat structure
-        const transformedVideos = (result.data.videos || []).map((v: any) => ({
+        const transformedVideos = (result.data.videos || []).map((v: Record<string, any>) => ({
           id: v.id,
           title: v.snippet?.title || "",
           thumbnail: v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.default?.url || "",
@@ -2123,10 +2174,10 @@ function ChannelTabContent() {
 
         // Calculate stats
         const totalVideos = transformedVideos.length;
-        const totalViews = transformedVideos.reduce((sum: number, v: any) => sum + (v.viewCount || 0), 0);
+        const totalViews = transformedVideos.reduce((sum: number, v: { viewCount: number }) => sum + (v.viewCount || 0), 0);
         const avgViews = totalVideos > 0 ? Math.round(totalViews / totalVideos) : 0;
-        const totalLikes = transformedVideos.reduce((sum: number, v: any) => sum + (v.likeCount || 0), 0);
-        const totalComments = transformedVideos.reduce((sum: number, v: any) => sum + (v.commentCount || 0), 0);
+        const totalLikes = transformedVideos.reduce((sum: number, v: { likeCount: number }) => sum + (v.likeCount || 0), 0);
+        const totalComments = transformedVideos.reduce((sum: number, v: { commentCount: number }) => sum + (v.commentCount || 0), 0);
         const engagementRate = totalViews > 0 ? Math.round(((totalLikes + totalComments) / totalViews) * 1000) / 10 : 0;
 
         setStats({

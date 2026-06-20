@@ -6,6 +6,35 @@ import { useRouter } from "next/navigation";
 import React from "react";
 import { ContextMenu, useContextMenu } from "./CardContextMenu";
 
+// Deduplicate concurrent fetches for the same channelId
+const channelFetchCache = new Map<string, Promise<string | null>>();
+
+function fetchChannelThumbnail(channelId: string): Promise<string | null> {
+  const cached = localStorage.getItem(`channel_thumb_${channelId}`);
+  if (cached) return Promise.resolve(cached);
+
+  if (channelFetchCache.has(channelId)) {
+    return channelFetchCache.get(channelId)!;
+  }
+
+  const promise = fetch(`/api/youtube/channel?channelId=${channelId}`)
+    .then((res) => res.json())
+    .then((result) => {
+      if (result.success && result.data?.thumbnail) {
+        localStorage.setItem(`channel_thumb_${channelId}`, result.data.thumbnail);
+        return result.data.thumbnail as string;
+      }
+      return null;
+    })
+    .catch(() => null)
+    .finally(() => {
+      channelFetchCache.delete(channelId);
+    });
+
+  channelFetchCache.set(channelId, promise);
+  return promise;
+}
+
 interface VideoCardProps {
   video: VideoWithOutlier;
   onSave?: (video: VideoWithOutlier) => void;
@@ -21,27 +50,14 @@ export const VideoCard = React.memo(function VideoCard({ video, onSave }: VideoC
   const [channelThumbnail, setChannelThumbnail] = useState<string | null>(null);
   const { isOpen, position, openMenu, closeMenu } = useContextMenu();
 
-  // Fetch channel thumbnail
+  // Fetch channel thumbnail with deduplication
   useEffect(() => {
     if (!video.channelId || channelThumbnail) return;
-
-    const cached = localStorage.getItem(`channel_thumb_${video.channelId}`);
-    if (cached) {
-      setChannelThumbnail(cached);
-      return;
-    }
-
-    fetch(`/api/youtube/channel?channelId=${video.channelId}`)
-      .then((res) => res.json())
-      .then((result) => {
-        if (result.success && result.data?.thumbnail) {
-          localStorage.setItem(`channel_thumb_${video.channelId}`, result.data.thumbnail);
-          setChannelThumbnail(result.data.thumbnail);
-        }
-      })
-      .catch(() => {
-        // silently fail - will show placeholder
-      });
+    let cancelled = false;
+    fetchChannelThumbnail(video.channelId).then((url) => {
+      if (!cancelled && url) setChannelThumbnail(url);
+    });
+    return () => { cancelled = true; };
   }, [video.channelId, channelThumbnail]);
 
   function handleDragStart(e: React.DragEvent) {

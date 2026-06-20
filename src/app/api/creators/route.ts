@@ -1,11 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
+import { validateUserAccess } from "@/lib/api-auth";
 import { doc, setDoc, getDoc, collection, getDocs, query, orderBy, serverTimestamp } from "firebase/firestore";
 import { getYouTubeClient } from "@/lib/youtube-client";
 import { calculateOutlierScore, estimateHookType, estimateStructure } from "@/lib/outlier";
 import type { TrackedCreator } from "@/types/creator";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { userId, channelUrl } = body;
@@ -13,6 +14,9 @@ export async function POST(request: Request) {
     if (!userId) {
       return NextResponse.json({ success: false, error: "Missing userId" }, { status: 400 });
     }
+
+    const authError = validateUserAccess(request, userId);
+    if (authError) return authError;
 
     let channelId: string | null = body.channelId || null;
 
@@ -81,7 +85,7 @@ function extractChannelId(url: string): string | null {
   return null;
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
@@ -89,6 +93,9 @@ export async function GET(request: Request) {
     if (!userId) {
       return NextResponse.json({ success: false, error: "Missing userId" }, { status: 400 });
     }
+
+    const authError = validateUserAccess(request, userId);
+    if (authError) return authError;
 
     const creatorsSnapshot = await getDocs(
       query(collection(db, "users", userId, "creators"), orderBy("updatedAt", "desc"))
