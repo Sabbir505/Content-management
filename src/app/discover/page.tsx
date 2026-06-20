@@ -1036,15 +1036,15 @@ function DiscoverPageContent() {
                 <div className="flex items-center justify-center py-20">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
                 </div>
-              ) : workspaceCards.length === 0 ? (
+              ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 aspect-[4/3] flex flex-col">
+                  {/* First card - always shows board description */}
+                  <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 aspect-[4/3] flex flex-col overflow-hidden">
                     {activeWorkspace === "my-ideas" ? (
                       <p className="text-sm text-[#888]">This is a card. Cards are useful for capturing quick ideas or notes. Use this board to capture ideas, paste links, or save social posts.</p>
                     ) : (
                       <>
-                        <h2 className="text-sm font-semibold text-white mb-2">Welcome to your board</h2>
-                        <p className="text-xs text-[#888] mb-3">This is a document, and it lives inside a board.</p>
+                        <p className="text-xs text-[#888] mb-3">Your garden for ideas.<br />This is a document, and it lives inside a board.</p>
                         <h3 className="text-xs font-semibold text-white mb-1">What you can do with boards</h3>
                         <ul className="text-xs text-[#888] space-y-0.5 mb-3 list-disc list-inside">
                           <li>Write content, newsletters, scripts, and more</li>
@@ -1052,13 +1052,13 @@ function DiscoverPageContent() {
                           <li>Chat with a single item, or with the whole board at once</li>
                         </ul>
                         <h3 className="text-xs font-semibold text-white mb-1">Why boards</h3>
-                        <p className="text-xs text-[#888] line-clamp-3">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
+                        <p className="text-xs text-[#888] mb-3">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, the Creators tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
+                        <h3 className="text-xs font-semibold text-white mb-1">Not sure where to start?</h3>
+                        <p className="text-xs text-[#888]">Use boards for the projects you already work on. A simple system: make one board each week and drop that week&apos;s content and ideas inside. It keeps everything organized without much effort.</p>
                       </>
                     )}
                   </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* User-created cards */}
                   {workspaceCards.map((card) => (
                     <div
                       key={card.id}
