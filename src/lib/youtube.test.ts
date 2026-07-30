@@ -30,7 +30,7 @@ const mockInfo = {
 
 // Simulate the YouTube.js API
 class MockInnertube {
-  async search(query: string, options?: any) {
+  async search(query: string, options?: Record<string, unknown>) {
     console.log("Mock search called with:", query, options);
     return mockSearchResults;
   }

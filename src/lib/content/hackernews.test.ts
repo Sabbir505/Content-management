@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fetchHackerNewsStories, searchHackerNewsByTopic } from "./hackernews";
-import type { ContentSearchResult } from "@/types/content";
 
 describe("Hacker News Content API", () => {
   beforeEach(() => {

@@ -1,6 +1,29 @@
-const API_URL = process.env.KIMI_API_ENDPOINT || "https://ai2.18.show/v1/chat/completions";
-const API_KEY = process.env.KIMI_API_KEY;
-const MODEL = process.env.KIMI_MODEL || "Kimi-K2.6";
+import { cookies } from "next/headers";
+
+async function getLlmConfig(): Promise<{ apiUrl: string; apiKey: string; model: string }> {
+  try {
+    const cookieStore = await cookies();
+    const configCookie = cookieStore.get("tubeforge_llm_config");
+    if (configCookie?.value) {
+      const config = JSON.parse(configCookie.value);
+      if (config.apiKey && config.apiEndpoint) {
+        return {
+          apiUrl: config.apiEndpoint,
+          apiKey: config.apiKey,
+          model: config.model || "Kimi-K2.6",
+        };
+      }
+    }
+  } catch {
+    // cookies() throws outside server context — fall back to env
+  }
+
+  return {
+    apiUrl: process.env.KIMI_API_ENDPOINT || "https://ai2.18.show/v1/chat/completions",
+    apiKey: process.env.KIMI_API_KEY || "",
+    model: process.env.KIMI_MODEL || "Kimi-K2.6",
+  };
+}
 
 interface ApiMessage {
   role: "system" | "user" | "assistant";
@@ -21,7 +44,7 @@ export async function generateScript(
   tone: string,
   userVoice: string
 ): Promise<string> {
-  const apiKey = API_KEY;
+  const { apiUrl, apiKey, model } = await getLlmConfig();
 
   const messages: ApiMessage[] = [
     {
@@ -49,14 +72,14 @@ Please provide the full script with section markers.`,
     },
   ];
 
-  const response = await fetch(API_URL, {
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       messages,
       temperature: 0.8,
       max_tokens: 2000,
@@ -84,7 +107,7 @@ export async function generateSocialPosts(
   platform: "x" | "instagram" | "facebook",
   userVoice: string
 ): Promise<string> {
-  const apiKey = API_KEY;
+  const { apiUrl, apiKey, model } = await getLlmConfig();
 
   const platformPrompts: Record<string, string> = {
     x: "Create a Twitter/X thread (5-8 tweets) that teases the video content and drives engagement.",
@@ -110,14 +133,14 @@ ${platformPrompts[platform]}`,
     },
   ];
 
-  const response = await fetch(API_URL, {
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       messages,
       temperature: 0.8,
       max_tokens: 1500,
@@ -151,7 +174,7 @@ export async function generateSeoPackage(
   chapters: string[];
   pinnedComment: string;
 }> {
-  const apiKey = API_KEY;
+  const { apiUrl, apiKey, model } = await getLlmConfig();
 
   const messages: ApiMessage[] = [
     {
@@ -188,14 +211,14 @@ Return ONLY the JSON object, no markdown formatting.`,
     },
   ];
 
-  const response = await fetch(API_URL, {
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       messages,
       temperature: 0.8,
       max_tokens: 2500,
@@ -247,7 +270,7 @@ export async function regenerateSection(
   currentScript: string,
   userVoice: string
 ): Promise<string> {
-  const apiKey = API_KEY;
+  const { apiUrl, apiKey, model } = await getLlmConfig();
 
   const messages: ApiMessage[] = [
     {
@@ -264,14 +287,14 @@ Please provide only the new ${sectionType} section.`,
     },
   ];
 
-  const response = await fetch(API_URL, {
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       messages,
       temperature: 0.9,
       max_tokens: 1000,

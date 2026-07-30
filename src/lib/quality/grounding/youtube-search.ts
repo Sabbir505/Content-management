@@ -1,4 +1,4 @@
-import { searchYouTubeVideosScrape, getVideoDetailsScrape, getChannelDetailsScrape } from "../../youtube-scraper";
+import { searchYouTubeVideosScrape } from "../../youtube-scraper";
 import * as memoryCache from "../cache";
 import type { YouTubeSearchResult, YouTubeSearchError } from "../types";
 
@@ -6,7 +6,7 @@ const MEMORY_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
 interface SearchFilters {
   niche: string;
-  timeRange: "day" | "week" | "month" | "year";
+  timeRange: "day" | "week" | "month" | "3months" | "year";
   language: "any" | "en";
 }
 

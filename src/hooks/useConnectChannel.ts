@@ -21,7 +21,7 @@ interface UseConnectChannelReturn {
   channel: YouTubeChannel | null;
   isConnecting: boolean;
   isConnected: boolean;
-  connectChannel: () => Promise<void>;
+  connectChannel: (onConnected?: (ch: YouTubeChannel) => void) => Promise<void>;
   disconnectChannel: () => Promise<void>;
   refreshChannel: () => Promise<void>;
 }
@@ -37,11 +37,11 @@ async function getGoogleAccessToken(): Promise<string> {
       body: JSON.stringify({ accessToken: stored }),
     });
     if (testResponse.ok) return stored;
+    // Token rejected (expired/revoked) or server errored — drop it and re-auth.
+    localStorage.removeItem("google_access_token");
   }
 
   // Token missing or expired — re-authenticate with Google
-  localStorage.removeItem("google_access_token");
-
   const provider = new GoogleAuthProvider();
   provider.addScope("https://www.googleapis.com/auth/youtube.readonly");
 
@@ -66,18 +66,25 @@ async function fetchYouTubeChannel(accessToken: string): Promise<YouTubeChannel>
     body: JSON.stringify({ accessToken }),
   });
 
-  if (!response.ok) {
-    const errorData = await response.text();
-    throw new Error(`YouTube API error: ${response.status}`);
+  const contentType = response.headers.get("content-type") || "";
+  const isJson = contentType.includes("application/json");
+  const body = isJson ? await response.json().catch(() => null) : null;
+
+  if (!response.ok || !isJson) {
+    // A non-JSON body means the server returned an error page (e.g. worker crash)
+    // rather than our route's JSON error — don't try to parse it as JSON.
+    const serverMessage = body?.error;
+    throw new Error(
+      serverMessage ||
+        `YouTube connection failed (${response.status || "no response"}). Reconnect your Google account.`
+    );
   }
 
-  const result = await response.json();
-
-  if (!result.success || !result.data) {
-    throw new Error(result.error || "No YouTube channel found for this account");
+  if (!body.success || !body.data) {
+    throw new Error(body.error || "No YouTube channel found for this account");
   }
 
-  const channelData = result.data;
+  const channelData = body.data;
   return {
     channelId: channelData.channelId,
     title: channelData.title,
@@ -125,7 +132,7 @@ export function useConnectChannel(): UseConnectChannelReturn {
     }
   }, [profile]);
 
-  const connectChannel = useCallback(async () => {
+  const connectChannel = useCallback(async (onConnected?: (ch: YouTubeChannel) => void) => {
     if (!user) {
       toast.error("Please sign in first");
       return;
@@ -144,6 +151,7 @@ export function useConnectChannel(): UseConnectChannelReturn {
 
       setChannel(channelInfo);
       setIsConnected(true);
+      onConnected?.(channelInfo);
       toast.success(`Connected to ${channelInfo.title}!`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to connect channel");
@@ -166,7 +174,7 @@ export function useConnectChannel(): UseConnectChannelReturn {
       setChannel(null);
       setIsConnected(false);
       toast.success("Channel disconnected");
-    } catch (error) {
+    } catch {
       toast.error("Failed to disconnect channel");
     }
   }, [user]);
@@ -188,7 +196,8 @@ export function useConnectChannel(): UseConnectChannelReturn {
   // Fetch actual channel stats on mount if we have a channel ID
   useEffect(() => {
     if (profile?.youtubeChannelId && isConnected) {
-      refreshChannel();
+      // Defer so setState inside refreshChannel doesn't run synchronously in the effect
+      queueMicrotask(() => void refreshChannel());
     }
   }, [profile?.youtubeChannelId, isConnected, refreshChannel]);
 

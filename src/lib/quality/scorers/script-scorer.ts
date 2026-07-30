@@ -78,7 +78,7 @@ export function scoreScript(
     // Hook uses proven pattern (15 pts)
     const hookText = hookSection.content;
     let patternMatched = false;
-    for (const [patternName, regex] of Object.entries(HOOK_PATTERNS)) {
+    for (const [, regex] of Object.entries(HOOK_PATTERNS)) {
       if (regex.test(hookText)) {
         patternMatched = true;
         break;

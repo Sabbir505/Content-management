@@ -1,9 +1,9 @@
-import type { ArticleSegment, ArticlePipelineInput } from "./types";
+import type { ArticleSegment } from "./types";
 
 // Simple content extraction (V1: no heavy library, basic regex-based cleanup)
 export function extractArticleContent(html: string): { content: string; headers: { text: string; level: number }[] } {
   // Remove script and style tags
-  let cleaned = html
+  const cleaned = html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
 
@@ -93,7 +93,6 @@ export function segmentArticleIntoBeats(
     // Method A: Header-based segmentation
     const beats: ArticleSegment[] = [];
     let currentStart = 0;
-    let currentHeader = "";
 
     // First beat: intro (before first header)
     const firstHeaderIndex = content.indexOf(headers[0].text);

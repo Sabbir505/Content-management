@@ -11,6 +11,7 @@ export interface YouTubeVideo {
   duration: string;
   description: string;
   tags: string[];
+  subscriberCount?: number;
 }
 
 export interface VideoWithOutlier extends YouTubeVideo {
@@ -19,6 +20,10 @@ export interface VideoWithOutlier extends YouTubeVideo {
   hookType: string;
   estimatedStructure: string;
   discoveryScore?: number;
+  velocityTrend?: number; // views per hour change since last fetch
+  nicheBaseline?: number; // average views for this niche
+  subscriberWeightedOutlier?: number; // outlier adjusted for subscriber count
+  transcript?: string;
 }
 
 export interface TrendingFilter {

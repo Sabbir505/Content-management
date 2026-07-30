@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TubeForge - YouTube Intelligence & Content Creation",
+  title: "Outlierly - YouTube Intelligence & Content Creation",
   description:
     "Find viral YouTube content, understand its structure, and produce your own version with AI-powered script generation, social posts, and SEO optimization.",
 };

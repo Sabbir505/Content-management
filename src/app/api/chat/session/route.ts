@@ -17,39 +17,56 @@ import { validateUserAccess } from "@/lib/api-auth";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, title, boardId, cardId } = body;
+    const { userId, title, boardId, cardId, sessionId: requestedSessionId } = body;
 
     if (!userId) {
       return NextResponse.json({ success: false, error: "userId is required" }, { status: 400 });
     }
 
-    const authError = validateUserAccess(request, userId);
+    const authError = await validateUserAccess(request, userId);
     if (authError) return authError;
 
-    const sessionId = crypto.randomUUID();
+    // Clients generate their own session ID so sending the first message
+    // never blocks on this request; fall back for callers that don't.
+    const sessionId =
+      typeof requestedSessionId === "string" && /^[\w-]{1,128}$/.test(requestedSessionId)
+        ? requestedSessionId
+        : crypto.randomUUID();
     const now = new Date().toISOString();
 
     const session: ChatSession = {
       id: sessionId,
       title: title || "New Chat",
-      boardId,
       cardId,
       createdAt: now,
       updatedAt: now,
       messageCount: 0,
     };
 
-    await setDoc(doc(db, "users", userId, "chatSessions", sessionId), {
-      ...session,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    try {
+      const firestoreData: Record<string, unknown> = {
+        ...session,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      // Firestore rejects undefined values
+      delete firestoreData.cardId;
+      if (boardId) firestoreData.boardId = boardId;
+      if (cardId) firestoreData.cardId = cardId;
+
+      await Promise.race([
+        setDoc(doc(db, "users", userId, "chatSessions", sessionId), firestoreData),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),
+      ]);
+    } catch (fsError) {
+      console.error("Firestore unavailable, proceeding without persistence:", fsError);
+    }
 
     return NextResponse.json({ success: true, data: session });
   } catch (error) {
     console.error("Create session error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Internal server error" },
+      { success: false, error: "Internal server error" },
       { status: 500 }
     );
   }
@@ -65,7 +82,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "userId is required" }, { status: 400 });
     }
 
-    const authError = validateUserAccess(request, userId);
+    const authError = await validateUserAccess(request, userId);
     if (authError) return authError;
 
     if (sessionId) {
@@ -135,7 +152,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Fetch session error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Internal server error" },
+      { success: false, error: "Internal server error" },
       { status: 500 }
     );
   }

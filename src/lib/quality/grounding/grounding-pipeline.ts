@@ -1,11 +1,9 @@
-import type { GroundingContext, OutputType, PlatformType } from "../types";
+import type { GroundingContext } from "../types";
 import { fetchGoogleTrends } from "./google-trends";
 import { fetchYouTubeAutocomplete } from "./youtube-autocomplete";
 
 export async function enrichGenerationContext(
-  topic: string,
-  niche: string,
-  outputType: OutputType
+  topic: string
 ): Promise<GroundingContext> {
   const [trendsData, autocompleteData] =
     await Promise.all([

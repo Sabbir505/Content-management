@@ -10,7 +10,7 @@ import { db } from "../../firebase";
 import { PERFORMANCE_WINDOWS } from "../constants";
 import { getTrackedContent } from "./content-tracker";
 import { getConnectionToken } from "./platform-connections";
-import type { PerformanceSnapshot, PlatformType } from "../types";
+import type { PlatformType } from "../types";
 
 export async function pullYouTubeMetrics(
   videoId: string,
@@ -39,6 +39,7 @@ export async function pullYouTubeMetrics(
   return metrics;
 }
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
 export async function pullXMetrics(
   _postId: string,
   _accessToken: string
@@ -54,6 +55,7 @@ export async function pullXMetrics(
   };
 }
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
 export async function pullInstagramMetrics(
   _postId: string,
   _accessToken: string
@@ -70,6 +72,7 @@ export async function pullInstagramMetrics(
   };
 }
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
 export async function pullFacebookMetrics(
   _postId: string,
   _accessToken: string
@@ -82,6 +85,7 @@ export async function pullFacebookMetrics(
     reach: 0,
   };
 }
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 const pullFns: Record<
   PlatformType,

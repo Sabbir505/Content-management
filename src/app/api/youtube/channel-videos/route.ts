@@ -1,29 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { proxyFetch } from "@/lib/proxy";
-
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
-
-interface YouTubeSnippet {
-  title: string;
-  channelId: string;
-  channelTitle: string;
-  description: string;
-  publishedAt: string;
-  tags?: string[];
-  thumbnails: {
-    default?: { url: string };
-    medium?: { url: string };
-    high?: { url: string };
-    maxres?: { url: string };
-  };
-  resourceId?: {
-    videoId: string;
-  };
-}
+import { YOUTUBE_API_KEY, fetchYouTubeApi, resolveChannelId, type YouTubeChannelSnippet } from "@/lib/youtube-api";
+import { guardApiKey } from "@/lib/api-helpers";
 
 interface YouTubeChannelItem {
   id: string;
-  snippet: YouTubeSnippet;
+  snippet: YouTubeChannelSnippet;
   contentDetails?: {
     relatedPlaylists?: {
       uploads?: string;
@@ -53,56 +34,7 @@ interface YouTubeVideoItem {
 
 interface YouTubePlaylistItem {
   id: string;
-  snippet: YouTubeSnippet;
-}
-
-interface YouTubeApiListResponse<T> {
-  items?: T[];
-  nextPageToken?: string;
-}
-
-async function fetchYouTubeApi<T>(path: string): Promise<YouTubeApiListResponse<T>> {
-  const url = `https://www.googleapis.com/youtube/v3/${path}`;
-  const response = await proxyFetch(url, {
-    headers: { Accept: "application/json" },
-    timeout: 30000,
-  });
-
-  if (!response.ok) {
-    const errorData = await response.text();
-    console.error("YouTube Data API error:", response.status, errorData);
-    throw new Error(`YouTube Data API error: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-async function resolveChannelId(identifier: string, apiKey: string): Promise<string | null> {
-  // Already a channel ID
-  if (/^UC[a-zA-Z0-9_-]{22}$/.test(identifier)) {
-    return identifier;
-  }
-
-  // Try searching by handle (remove @ if present)
-  const handle = identifier.startsWith("@") ? identifier : `@${identifier}`;
-  const searchData = await fetchYouTubeApi<{ id: { channelId: string } }>(
-    `search?part=snippet&q=${encodeURIComponent(handle)}&type=channel&maxResults=1&key=${apiKey}`
-  );
-
-  if (searchData.items && searchData.items.length > 0) {
-    return searchData.items[0].id.channelId;
-  }
-
-  // Fallback: try searching by the raw identifier
-  const fallbackData = await fetchYouTubeApi<{ id: { channelId: string } }>(
-    `search?part=snippet&q=${encodeURIComponent(identifier)}&type=channel&maxResults=1&key=${apiKey}`
-  );
-
-  if (fallbackData.items && fallbackData.items.length > 0) {
-    return fallbackData.items[0].id.channelId;
-  }
-
-  return null;
+  snippet: YouTubeChannelSnippet & { resourceId?: { videoId: string } };
 }
 
 export async function GET(request: NextRequest) {
@@ -113,21 +45,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "channelId parameter is required" }, { status: 400 });
     }
 
-    if (!YOUTUBE_API_KEY) {
-      console.error("YOUTUBE_API_KEY is not set");
-      return NextResponse.json({ success: false, error: "YouTube API key not configured" }, { status: 500 });
-    }
+    const guard = await guardApiKey(YOUTUBE_API_KEY, "YOUTUBE_API_KEY");
+    if (guard) return guard;
 
-    // Resolve the channel ID (handles bare names, handles, and raw IDs)
-    const channelId = await resolveChannelId(rawChannelId, YOUTUBE_API_KEY);
+    const channelId = await resolveChannelId(rawChannelId);
 
     if (!channelId) {
       return NextResponse.json({ success: false, error: "Could not find channel. Try using the full YouTube channel URL or the channel ID (UC...)" }, { status: 404 });
     }
 
-    // 1. Get channel details and uploads playlist id
     const channelData = await fetchYouTubeApi<YouTubeChannelItem>(
-      `channels?part=snippet,contentDetails,statistics&id=${channelId}&key=${YOUTUBE_API_KEY}`
+      `channels?part=snippet,contentDetails,statistics&id=${channelId}`
     );
 
     if (!channelData.items || channelData.items.length === 0) {
@@ -141,9 +69,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "No uploads playlist found for this channel" }, { status: 404 });
     }
 
-    // 2. Get videos from uploads playlist
     const playlistItems = await fetchYouTubeApi<YouTubePlaylistItem>(
-      `playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=50&key=${YOUTUBE_API_KEY}`
+      `playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=50`
     );
 
     if (!playlistItems.items || playlistItems.items.length === 0) {
@@ -154,12 +81,11 @@ export async function GET(request: NextRequest) {
       .map((item) => item.snippet.resourceId?.videoId)
       .filter((id): id is string => !!id);
 
-    // 3. Get statistics and duration for each video
     const videoDetails: YouTubeVideoItem[] = [];
     for (let i = 0; i < videoIds.length; i += 50) {
       const batch = videoIds.slice(i, i + 50);
       const details = await fetchYouTubeApi<YouTubeVideoItem>(
-        `videos?part=statistics,contentDetails&id=${batch.join(",")}&key=${YOUTUBE_API_KEY}`
+        `videos?part=statistics,contentDetails&id=${batch.join(",")}`
       );
       if (details.items) {
         videoDetails.push(...details.items);
@@ -215,7 +141,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Channel videos error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Internal server error" },
+      { success: false, error: "Internal server error" },
       { status: 500 }
     );
   }

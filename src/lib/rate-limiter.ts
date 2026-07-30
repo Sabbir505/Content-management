@@ -14,13 +14,6 @@ const DEFAULT_CONFIGS: Record<string, RateLimitConfig> = {
     retryAttempts: 3,
     retryDelayBaseMs: 5000,
   },
-  reddit: {
-    name: "Reddit",
-    minDelayMs: 1000,
-    maxConcurrent: 2,
-    retryAttempts: 3,
-    retryDelayBaseMs: 2000,
-  },
   devto: {
     name: "DEV.to",
     minDelayMs: 200,
@@ -133,6 +126,14 @@ class RateLimiter {
         } finally {
           const newActive = (this.activeRequests.get(source) || 0) - 1;
           this.activeRequests.set(source, Math.max(0, newActive));
+          // A slot freed up: ensure the queue keeps draining even if the
+          // main loop had hit the concurrency cap and bailed out.
+          if (newActive < this.getConfig(source).maxConcurrent) {
+            const queue = this.queues.get(source);
+            if (queue && queue.length > 0 && !this.processing.get(source)) {
+              void this.processQueue(source);
+            }
+          }
         }
       }
     } finally {
@@ -200,10 +201,12 @@ function defaultIsRetryable(error: unknown): boolean {
     if (message.includes("econnrefused") || message.includes("econnreset")) {
       return true;
     }
-    if (message.includes("403") || message.includes("forbidden")) {
+    if (message.includes("500") || message.includes("502") || message.includes("503")) {
       return true;
     }
-    if (message.includes("500") || message.includes("502") || message.includes("503")) {
+    // 403/Forbidden is usually a permanent failure (bad key, IP ban). Only
+    // retry if it looks like a temporary ban notice, otherwise surface it.
+    if (message.includes("forbidden") && (message.includes("temporary") || message.includes("retry") || message.includes("quota"))) {
       return true;
     }
   }

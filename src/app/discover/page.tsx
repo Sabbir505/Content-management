@@ -1,189 +1,259 @@
 "use client";
 
-import { useState, useEffect, Suspense, useMemo, useRef } from "react";
+import { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { VideoWithOutlier } from "@/types/video";
 import { ContentItem } from "@/types/content";
-import { VideoCard } from "@/components/discover/VideoCard";
-import { ContentCard } from "@/components/discover/ContentCard";
+import type { BoardCard } from "@/types/board";
+import { db } from "@/lib/firebase";
+import { doc, updateDoc, serverTimestamp, setDoc, increment } from "firebase/firestore";
+import { CategoryPills } from "@/components/discover/CategoryPills";
+import { DiscoverContentGrid } from "@/components/discover/DiscoverContentGrid";
+import { ContentChatPanel } from "@/components/discover/ContentChatPanel";
 import { QuotaExceededError } from "@/components/discover/QuotaExceededError";
-import { calculateContentDiscoveryScore, calculateVideoDiscoveryScore } from "@/lib/discovery-score";
-import { BoardPicker } from "@/components/discover/BoardPicker";
+import { CreatorListsTab } from "@/components/discover/CreatorListsTab";
+import { CreatorsTab } from "@/components/discover/CreatorsTab";
+import { FilterDropdown } from "@/components/discover/FilterDropdown";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
-import { useConnectChannel } from "@/hooks/useConnectChannel";
-import type { YouTubeSearchError } from "@/lib/quality/types";
-import type { TrackedCreator } from "@/types/creator";
-import { Trash2, Link2, FileText, Square, Layers, BookOpen } from "lucide-react";
+import { useBlocklistSync } from "@/hooks/useBlocklistSync";
+import { useCategories } from "@/hooks/useCategories";
+import { useChatSessions } from "@/hooks/useChatSessions";
+import { useDiscoverFilters } from "@/hooks/useDiscoverFilters";
+import type { SortOption, ContentType } from "@/hooks/useDiscoverFilters";
+import { useBoardSave } from "@/hooks/useBoardSave";
+import { useDiscoverData } from "@/hooks/useDiscoverData";
+import { useWorkspaceBoard } from "@/hooks/useWorkspaceBoard";
+import { useLocalCreators } from "@/hooks/useLocalCreators";
+import { useTrackedCreatorVideos } from "@/hooks/useTrackedCreatorVideos";
+import { LOADING_SAFETY_TIMEOUT_MS } from "@/lib/discovery/time-periods";
+import { plainTextToEditableHtml } from "@/lib/board-content";
+import { AppSidebar } from "@/components/AppSidebar";
+import { Trash2, MessageSquare, Copy, Plus, BookOpen, FileText } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { db } from "@/lib/firebase";
-import {
-  collection,
-  doc,
-  setDoc,
-  deleteDoc,
-  getDocs,
-  query,
-  orderBy,
-  serverTimestamp,
-  updateDoc,
-  increment,
-} from "firebase/firestore";
-import type { Board, BoardCard } from "@/types/board";
+import { ChannelAnalytics } from "@/components/channel/ChannelAnalytics";
 
-type ContentType = "videos" | "articles" | "all";
-type SortOption = "discovery" | "trending" | "top" | "recent" | "discussed";
-type TimeRange = "day" | "week" | "month" | "year";
 type ResearchTab = "discover" | "creators" | "lists" | "channel";
 
-const PLATFORMS = [
-  { id: "twitter", label: "X / Twitter" },
-  { id: "youtube", label: "YouTube" },
-  { id: "substack", label: "Substack" },
-  { id: "instagram", label: "Instagram" },
-  { id: "tiktok", label: "TikTok" },
-  { id: "linkedin", label: "LinkedIn" },
-];
-
-function PlatformIcon({ id, className = "w-4 h-4" }: { id: string; className?: string }) {
-  switch (id) {
-    case "twitter":
-      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>;
-    case "youtube":
-      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>;
-    case "substack":
-      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M22.539 8.242H1.46V5.406h21.08v2.836zM1.46 10.812V24l9.56-5.39L20.54 24V10.812H1.46zM22.54 0H1.46v2.836h21.08V0z"/></svg>;
-    case "instagram":
-      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>;
-    case "tiktok":
-      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>;
-    case "linkedin":
-      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>;
-    default:
-      return null;
+// Merge category-search videos with tracked-creator videos, deduping by id.
+// Category-search videos win on collision (they carry richer stats: comments,
+// description, tags) so creator videos only fill gaps the search didn't surface.
+function mergeVideos(searchVideos: VideoWithOutlier[], creatorVideos: VideoWithOutlier[]): VideoWithOutlier[] {
+  const seen = new Set<string>();
+  const merged: VideoWithOutlier[] = [];
+  for (const v of searchVideos) {
+    if (seen.has(v.id)) continue;
+    seen.add(v.id);
+    merged.push(v);
   }
-}
-
-const LANGUAGES = [
-  { id: "en", label: "English" },
-  { id: "es", label: "Spanish" },
-  { id: "pt", label: "Portuguese" },
-  { id: "fr", label: "French" },
-  { id: "de", label: "German" },
-  { id: "it", label: "Italian" },
-  { id: "nl", label: "Dutch" },
-  { id: "ja", label: "Japanese" },
-  { id: "ko", label: "Korean" },
-  { id: "zh", label: "Chinese" },
-  { id: "hi", label: "Hindi" },
-  { id: "ar", label: "Arabic" },
-];
-
-const FOLLOWER_RANGES = [
-  { id: "any", label: "Any" },
-  { id: "1k-20k", label: "1K \u2013 20K" },
-  { id: "20k-100k", label: "20K \u2013 100K" },
-  { id: "100k-1m", label: "100K \u2013 1M" },
-  { id: "1m-8m", label: "1M \u2013 8M" },
-  { id: "8m+", label: "8M+" },
-];
-
-const OUTLIER_RANGES = [
-  { id: "any", label: "Any" },
-  { id: "3x", label: "3\u00d7 or more" },
-  { id: "5x", label: "5\u00d7 or more" },
-  { id: "10x", label: "10\u00d7 or more" },
-  { id: "20x", label: "20\u00d7 or more" },
-];
-
-const TIME_PERIODS = [
-  { id: "week", label: "Week" },
-  { id: "month", label: "Month" },
-  { id: "3months", label: "3 months" },
-  { id: "year", label: "Year" },
-  { id: "all", label: "All time" },
-];
-
-function isQuotaError(error: string | undefined): boolean {
-  if (!error) return false;
-  const lowerError = error.toLowerCase();
-  return (
-    lowerError.includes("quota") ||
-    lowerError.includes("429") ||
-    lowerError.includes("rate limit") ||
-    lowerError.includes("exceeded")
-  );
-}
-
-function getAgeHours(publishedAt: string): number {
-  const published = new Date(publishedAt).getTime();
-  const now = Date.now();
-  return Math.max((now - published) / (1000 * 60 * 60), 0.01);
+  for (const v of creatorVideos) {
+    if (seen.has(v.id)) continue;
+    seen.add(v.id);
+    merged.push(v);
+  }
+  return merged;
 }
 
 function DiscoverPageContent() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [videos, setVideos] = useState<VideoWithOutlier[]>([]);
-  const [contentItems, setContentItems] = useState<ContentItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingVideos, setIsLoadingVideos] = useState(false);
-  const [isLoadingContent, setIsLoadingContent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [quotaError, setQuotaError] = useState<YouTubeSearchError | null>(null);
-  const [fromCache, setFromCache] = useState(false);
+  const workspaceParam = searchParams.get("workspace");
+  const tabParam = searchParams.get("tab");
+  const {
+    videos,
+    setVideos,
+    contentItems,
+    setContentItems,
+    isLoadingVideos,
+    setIsLoadingVideos,
+    isLoadingContent,
+    setIsLoadingContent,
+    error,
+    quotaError,
+    fromCache,
+    fetchCountRef,
+    fetchVideos,
+    fetchContent,
+    handleRetry,
+  } = useDiscoverData();
+  const { creators: trackedCreators } = useLocalCreators();
+  const { creatorVideos, isLoading: isLoadingCreatorVideos } = useTrackedCreatorVideos(trackedCreators);
+  // True while any feed source is still loading its first batch
+  const isFeedLoading = isLoadingVideos || isLoadingContent || isLoadingCreatorVideos;
   const [activeTab, setActiveTab] = useState<ContentType>("all");
-  const [researchTab, setResearchTab] = useState<ResearchTab>("discover");
+  const [researchTab, setResearchTab] = useState<ResearchTab>(tabParam === "creators" ? "creators" : "discover");
   const [sortBy, setSortBy] = useState<SortOption>("top");
-  const [displayCount, setDisplayCount] = useState(16);
+  const [displayCount, setDisplayCount] = useState(24);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const [timeRange, setTimeRange] = useState<TimeRange>("month");
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
-  const [boardPickerOpen, setBoardPickerOpen] = useState(false);
-  const [pendingSaveVideo, setPendingSaveVideo] = useState<VideoWithOutlier | null>(null);
-  const [pendingSaveContent, setPendingSaveContent] = useState<ContentItem | null>(null);
+  const { saveVideo, saveContent } = useBoardSave(user?.uid);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["twitter", "youtube", "substack", "instagram", "tiktok", "linkedin"]);
-  const [selectedFormat, setSelectedFormat] = useState<"all" | "videos" | "articles" | "shorts" | "notes" | "reels" | "carousel" | "photos">("all");
-  const [selectedLanguage, setSelectedLanguage] = useState("en");
-  const [selectedFollowers, setSelectedFollowers] = useState("any");
-  const [followerMin, setFollowerMin] = useState("50000");
-  const [followerMax, setFollowerMax] = useState("8000000");
-  const [selectedOutlier, setSelectedOutlier] = useState("10x");
-  const [selectedTimePeriod, setSelectedTimePeriod] = useState("3months");
-  // Initialize with defaults — load from localStorage in useEffect after hydration
-  const [customCategories, setCustomCategories] = useState<string[]>([]);
-  const [activeCategories, setActiveCategories] = useState<string[]>([
-    "Productivity",
-    "Self-improvement",
-    "Business",
-    "Health & fitness",
-    "Content creation",
-    "Psychology",
-    "Technology",
-    "Finance",
-    "Entertainment",
-  ]);
-  const [showAddCategory, setShowAddCategory] = useState(false);
-  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
-  const [newCategory, setNewCategory] = useState("");
-  // Creators tab state
-  const [trackedCreators, setTrackedCreators] = useState<TrackedCreator[]>([]);
-  const [isLoadingCreators, setIsLoadingCreators] = useState(false);
-  const [creatorUrl, setCreatorUrl] = useState("");
-  const [isTrackingCreator, setIsTrackingCreator] = useState(false);
+  const {
+    customCategories,
+    setCustomCategories,
+    activeCategories,
+    setActiveCategories,
+    showAddCategory,
+    setShowAddCategory,
+    hoveredCategory,
+    setHoveredCategory,
+    newCategory,
+    setNewCategory,
+    handleAddCategory,
+    allCategories,
+  } = useCategories();
   const filterRef = useRef<HTMLDivElement>(null);
-  const fetchCountRef = useRef(0);
 
-  const queryParam = searchParams.get("query");
   const userId = user?.uid;
+
+  // Chat sessions state
+  const {
+    chatSessions,
+    isLoadingChatSessions,
+  } = useChatSessions();
+
+  // Workspace board state + handlers
+  const {
+    activeWorkspace,
+    setActiveWorkspace,
+    workspaceCards,
+    setWorkspaceCards,
+    isLoadingWorkspace,
+    addMenuOpen,
+    setAddMenuOpen,
+    cardContextMenu,
+    setCardContextMenu,
+    rightPane,
+    setRightPane,
+    loadWorkspaceCards,
+    handleDeleteCard,
+    handleDuplicateCard,
+    handleMoveToBoard,
+    handleReferenceToBoard,
+  } = useWorkspaceBoard({ user, initialWorkspace: workspaceParam });
+
+  // Chat panel state for discover feed
+  const [chatItem, setChatItem] = useState<{ item: VideoWithOutlier | ContentItem; type: "video" | "article"; initialPrompt?: string } | null>(null);
+  const [chatSessionId, setChatSessionId] = useState<string | undefined>();
+
+  // Card editor state
+  const [editingCard, setEditingCard] = useState<BoardCard | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [charCount, setCharCount] = useState(0);
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  const syncContentFromEditor = useCallback(() => {
+    if (editorRef.current) {
+      setCharCount(editorRef.current.textContent?.length ?? 0);
+    }
+  }, []);
+
+  // Set initial editor content when card opens
+  useEffect(() => {
+    if (editingCard && editorRef.current) {
+      editorRef.current.innerHTML = plainTextToEditableHtml(editingCard.content);
+      setCharCount(editorRef.current.textContent?.length ?? 0);
+    }
+  }, [editingCard]);
+
+  function openCardEditor(card: BoardCard) {
+    setEditingCard(card);
+    setEditTitle(card.title);
+    setRightPane(null);
+  }
+
+  function closeCardEditor() {
+    setEditingCard(null);
+    setRightPane(null);
+  }
+
+  async function handleSaveCardEdit() {
+    if (!editingCard || !user || !activeWorkspace) return;
+    const htmlContent = editorRef.current?.innerHTML || "";
+    const updatedCard = { ...editingCard, title: editTitle, content: htmlContent, updatedAt: new Date().toISOString() };
+    try {
+      const cardRef = doc(db, "users", user.uid, "boards", activeWorkspace, "cards", editingCard.id);
+      await setDoc(cardRef, {
+        title: editTitle,
+        content: htmlContent,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      setWorkspaceCards((prev) => prev.map((c) => (c.id === editingCard.id ? updatedCard : c)));
+      toast.success("Card saved");
+    } catch (e) {
+      console.error("Save failed:", e);
+      toast.error("Failed to save card");
+    }
+  }
+
+  async function handleCreateAndOpenCard() {
+    if (!user || !activeWorkspace) return;
+    const cardId = crypto.randomUUID();
+    const card: BoardCard = {
+      id: cardId,
+      boardId: activeWorkspace,
+      type: "note",
+      x: 0, y: 0, width: 240, height: 160,
+      title: "Untitled",
+      content: "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      await setDoc(doc(db, "users", user.uid, "boards", activeWorkspace, "cards", cardId), {
+        ...card,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, "users", user.uid, "boards", activeWorkspace), {
+        itemCount: increment(1),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.error("Create card Firestore failed, saved locally:", e);
+    }
+    setWorkspaceCards((prev) => [card, ...prev]);
+    openCardEditor(card);
+  }
+
+  // Blocklist version — bumps when items are hidden so feeds re-filter
+  const blocklistVersion = useBlocklistSync();
+
+  // Filters + derived memos
+  const {
+    selectedPlatforms,
+    setSelectedPlatforms,
+    selectedFormat,
+    setSelectedFormat,
+    selectedLanguage,
+    setSelectedLanguage,
+    selectedFollowers,
+    setSelectedFollowers,
+    followerMin,
+    setFollowerMin,
+    followerMax,
+    setFollowerMax,
+    selectedOutlier,
+    setSelectedOutlier,
+    selectedTimePeriod,
+    setSelectedTimePeriod,
+    showFilters,
+    setShowFilters,
+    unifiedItems,
+    sortedVideos,
+    sortedArticles,
+  } = useDiscoverFilters({
+    videos: mergeVideos(videos, creatorVideos),
+    contentItems,
+    searchQuery,
+    sortBy,
+    blocklistVersion,
+  });
 
   // Close filter dropdown when clicking outside
   useEffect(() => {
@@ -200,99 +270,48 @@ function DiscoverPageContent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showFilters]);
 
-  // Chat sessions state
-  const [chatSessions, setChatSessions] = useState<{ id: string; title: string }[]>([]);
-  const [isLoadingChatSessions, setIsLoadingChatSessions] = useState(false);
-  const [chatDropdownOpen, setChatDropdownOpen] = useState(false);
-
-  // Workspace board state
-  const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
-  const [workspaceCards, setWorkspaceCards] = useState<BoardCard[]>([]);
-  const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const [cardContextMenu, setCardContextMenu] = useState<{ card: BoardCard; x: number; y: number } | null>(null);
-
-  // Right pane state (split screen)
-  const [rightPane, setRightPane] = useState<{ type: "info" | "chat"; card?: BoardCard } | null>(null);
-  const [chatInput, setChatInput] = useState("");
-
-  // More menu state
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-
-  // Load categories from localStorage after hydration
-  useEffect(() => {
-    try {
-      const savedActive = localStorage.getItem("discover_activeCategories");
-      if (savedActive) {
-        const parsed = JSON.parse(savedActive);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setActiveCategories(parsed);
-        }
-      }
-      const savedCustom = localStorage.getItem("discover_customCategories");
-      if (savedCustom) {
-        const parsed = JSON.parse(savedCustom);
-        if (Array.isArray(parsed)) {
-          setCustomCategories(parsed);
-        }
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }, []);
-
-  // Persist categories to localStorage
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("discover_activeCategories", JSON.stringify(activeCategories));
-    }
-  }, [activeCategories]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("discover_customCategories", JSON.stringify(customCategories));
-    }
-  }, [customCategories]);
+  // Reset the visible-item count when the fetch inputs change (render-phase reset,
+  // not an effect, to avoid cascading renders flagged by react-hooks/set-state-in-effect)
+  const fetchKey = `${userId}|${selectedTimePeriod}|${selectedCategory}`;
+  const [lastFetchKey, setLastFetchKey] = useState(fetchKey);
+  if (fetchKey !== lastFetchKey) {
+    setLastFetchKey(fetchKey);
+    setDisplayCount(24);
+  }
 
   // Initial load: fetch trending content based on selected category
   useEffect(() => {
     if (!userId) return;
 
-    setVideos([]);
-    setContentItems([]);
-    setDisplayCount(16);
-
     const abortController = new AbortController();
     fetchCountRef.current += 1;
 
-    // When "All" is selected, fetch content for all active categories combined
-    let query: string;
+    // When "All" is selected, fetch from top categories for diverse results
+    let queries: string[];
+    let contentQuery: string;
     if (selectedCategory !== "All") {
-      query = selectedCategory;
+      queries = [selectedCategory];
+      contentQuery = selectedCategory;
     } else {
-      // Combine all active and custom categories into a single query for broader relevant results
       const allCats = [...activeCategories, ...customCategories];
-      if (allCats.length > 0) {
-        query = allCats.join(" | ");
-      } else {
-        query = "trending";
-      }
+      queries = allCats.length > 0 ? allCats.slice(0, 3) : ["content creation"];
+      contentQuery = queries[0]; // content APIs work better with single terms
     }
-    fetchVideos(query, abortController.signal);
-    fetchContent(query, abortController.signal);
+    fetchVideos({ queries, timePeriod: selectedTimePeriod, abortSignal: abortController.signal });
+    fetchContent({ query: contentQuery, timePeriod: selectedTimePeriod, abortSignal: abortController.signal });
 
     return () => {
       abortController.abort();
     };
-  }, [userId, timeRange, selectedCategory]);
+  }, [userId, selectedTimePeriod, selectedCategory]);
 
   // Infinite scroll: load more items when scrolling near bottom
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && !isLoadingMore && !isLoadingVideos && !isLoadingContent) {
+        if (entries[0].isIntersecting && !isLoadingMore && !isLoadingVideos && !isLoadingContent && !isLoadingCreatorVideos) {
           setIsLoadingMore(true);
-          setDisplayCount((prev) => prev + 12);
+          setDisplayCount((prev) => prev + 16);
           setTimeout(() => setIsLoadingMore(false), 300);
         }
       },
@@ -301,445 +320,48 @@ function DiscoverPageContent() {
     const el = loadMoreRef.current;
     if (el) observer.observe(el);
     return () => { if (el) observer.unobserve(el); };
-  }, [isLoadingMore, isLoadingVideos, isLoadingContent]);
-
-  // Load chat sessions when dropdown opens
-  useEffect(() => {
-    if (chatDropdownOpen && user) {
-      loadChatSessions();
-    }
-  }, [chatDropdownOpen, user]);
-
-  async function loadChatSessions() {
-    if (!user) return;
-    setIsLoadingChatSessions(true);
-    try {
-      const response = await fetch(`/api/chat/session?userId=${user.uid}`);
-      const result = await response.json();
-      if (result.success) {
-        setChatSessions(result.data.map((s: { id: string; title: string }) => ({ id: s.id, title: s.title })));
-      }
-    } catch (error) {
-      console.error("Failed to load chat sessions:", error);
-    } finally {
-      setIsLoadingChatSessions(false);
-    }
-  }
+  }, [isLoadingMore, isLoadingVideos, isLoadingContent, isLoadingCreatorVideos]);
 
   // Load workspace cards when a workspace board is selected
   useEffect(() => {
-    if (activeWorkspace && user) {
+    if (activeWorkspace) {
       loadWorkspaceCards(activeWorkspace);
     }
-  }, [activeWorkspace, user]);
+  }, [activeWorkspace, user, loadWorkspaceCards]);
 
-  // Close context menu, add menu, and more menu on click outside
+  // Close context menu and add menu on click outside
   useEffect(() => {
-    if (!cardContextMenu && !addMenuOpen && !moreMenuOpen) return;
+    if (!cardContextMenu && !addMenuOpen) return;
     function handleClick() {
       setCardContextMenu(null);
       setAddMenuOpen(false);
-      setMoreMenuOpen(false);
     }
     document.addEventListener("click", handleClick);
     return () => document.removeEventListener("click", handleClick);
-  }, [cardContextMenu, addMenuOpen, moreMenuOpen]);
+  }, [cardContextMenu, addMenuOpen]);
 
-  async function loadWorkspaceCards(boardId: string) {
-    if (!user) return;
-    setIsLoadingWorkspace(true);
-    try {
-      // Ensure the board exists
-      const { getDoc } = await import("firebase/firestore");
-      const boardRef = doc(db, "users", user.uid, "boards", boardId);
-      const boardSnap = await getDoc(boardRef);
-      if (!boardSnap.exists()) {
-        const name = boardId === "my-first-board" ? "My First Board" : "My Ideas";
-        await setDoc(boardRef, {
-          name,
-          description: boardId === "my-first-board" ? "Your notes and references" : "Quick ideas and notes",
-          isDefault: boardId === "my-ideas",
-          itemCount: 0,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
 
-      const cardsSnapshot = await getDocs(
-        query(collection(db, "users", user.uid, "boards", boardId, "cards"), orderBy("createdAt", "desc"))
-      );
-      const loaded: BoardCard[] = [];
-      cardsSnapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        loaded.push({
-          id: docSnap.id,
-          boardId: data.boardId || boardId,
-          type: data.type || "note",
-          x: data.x ?? 0,
-          y: data.y ?? 0,
-          width: data.width ?? 240,
-          height: data.height ?? 160,
-          title: data.title || "Untitled",
-          content: data.content || "",
-          metadata: data.metadata,
-          thumbnail: data.thumbnail,
-          url: data.url,
-          videoId: data.videoId,
-          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || "",
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || "",
-        });
-      });
-      setWorkspaceCards(loaded);
-    } catch (error) {
-      console.error("Failed to load workspace cards:", error);
-      toast.error("Failed to load board");
-    } finally {
-      setIsLoadingWorkspace(false);
-    }
-  }
-
-  async function handleAddCard(type: "note" | "link" | "document" | "card" | "section" | "reference") {
-    if (!user || !activeWorkspace) return;
-    const cardId = crypto.randomUUID();
-    const titleMap = { note: "New Note", link: "New Link", document: "New Document", card: "New Card", section: "New Section", reference: "New Reference" };
-    const card: BoardCard = {
-      id: cardId,
-      boardId: activeWorkspace,
-      type: "note",
-      x: 0,
-      y: 0,
-      width: 240,
-      height: 160,
-      title: titleMap[type],
-      content: "",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    try {
-      await setDoc(doc(db, "users", user.uid, "boards", activeWorkspace, "cards", cardId), {
-        ...card,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      await updateDoc(doc(db, "users", user.uid, "boards", activeWorkspace), {
-        itemCount: increment(1),
-        updatedAt: serverTimestamp(),
-      });
-      setWorkspaceCards((prev) => [card, ...prev]);
-      toast.success(`${titleMap[type]} created`);
-    } catch {
-      toast.error("Failed to create item");
-    }
-    setAddMenuOpen(false);
-  }
-
-  async function handleDeleteCard(cardId: string) {
-    if (!user || !activeWorkspace) return;
-    try {
-      await deleteDoc(doc(db, "users", user.uid, "boards", activeWorkspace, "cards", cardId));
-      await updateDoc(doc(db, "users", user.uid, "boards", activeWorkspace), {
-        itemCount: increment(-1),
-        updatedAt: serverTimestamp(),
-      });
-      setWorkspaceCards((prev) => prev.filter((c) => c.id !== cardId));
-      toast.success("Card deleted");
-    } catch {
-      toast.error("Failed to delete card");
-    }
-    setCardContextMenu(null);
-  }
-
-  async function handleDuplicateCard(card: BoardCard) {
-    if (!user || !activeWorkspace) return;
-    const newId = crypto.randomUUID();
-    const newCard = { ...card, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-    try {
-      await setDoc(doc(db, "users", user.uid, "boards", activeWorkspace, "cards", newId), {
-        ...newCard,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      await updateDoc(doc(db, "users", user.uid, "boards", activeWorkspace), {
-        itemCount: increment(1),
-        updatedAt: serverTimestamp(),
-      });
-      setWorkspaceCards((prev) => [newCard, ...prev]);
-      toast.success("Card duplicated");
-    } catch {
-      toast.error("Failed to duplicate card");
-    }
-    setCardContextMenu(null);
-  }
-
-  // Load tracked creators when on creators tab
+  // Safety timeout — force-clear loading flags if fetches hang
   useEffect(() => {
-    if (researchTab === "creators" && user) {
-      loadTrackedCreators();
-    }
-  }, [researchTab, user]);
-
-  useEffect(() => {
-    if (!isLoading && !isLoadingVideos && !isLoadingContent) return;
+    if (!isLoadingVideos && !isLoadingContent && !isLoadingCreatorVideos) return;
     const timer = setTimeout(() => {
-      setIsLoading(false);
       setIsLoadingVideos(false);
       setIsLoadingContent(false);
-      setInitialLoadDone(true);
-    }, 65000);
+    }, LOADING_SAFETY_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [isLoading, isLoadingVideos, isLoadingContent]);
+  }, [isLoadingVideos, isLoadingContent, isLoadingCreatorVideos]);
 
-  async function fetchVideos(query: string, abortSignal?: AbortSignal) {
-    setIsLoadingVideos(true);
-    setError(null);
-    setQuotaError(null);
 
-    try {
-      const response = await fetch(
-        `/api/youtube/search?query=${encodeURIComponent(query)}&timeRange=${timeRange}`,
-        { signal: abortSignal }
-      );
-      const result = await response.json();
 
-      if (!response.ok) {
-        const errorType = result.errorType || (isQuotaError(result.error) ? "quota_exceeded" : "api_error");
 
-        if (errorType === "quota_exceeded") {
-          setQuotaError({
-            type: "quota_exceeded",
-            message: result.error || "YouTube API daily quota exceeded",
-            retryAfter: result.retryAfter || calculateSecondsUntilMidnight(),
-            isQuotaExceeded: true,
-          });
-        } else {
-          setError(result.error || "Failed to load videos");
-        }
-        setVideos([]);
-        return;
-      }
-
-      const scoredVideos = (result.data.videos || []).map((video: VideoWithOutlier) => ({
-        ...video,
-        discoveryScore: video.discoveryScore ?? calculateVideoDiscoveryScore(video),
-      }));
-      setVideos(scoredVideos);
-      setFromCache(result.data.fromCache || false);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      setError(err instanceof Error ? err.message : "Failed to load videos");
-      setVideos([]);
-    } finally {
-      setIsLoadingVideos(false);
-    }
-  }
-
-  async function fetchContent(query: string, abortSignal?: AbortSignal) {
-    setIsLoadingContent(true);
-    try {
-      if (abortSignal?.aborted) return;
-
-      const controller = new AbortController();
-      if (abortSignal) {
-        const onAbort = () => controller.abort();
-        abortSignal.addEventListener("abort", onAbort, { once: true });
-      }
-      const timeoutId = setTimeout(() => controller.abort(), 45000);
-
-      const response = await fetch(`/api/content/search?query=${encodeURIComponent(query)}&limit=40`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      const result = await response.json();
-
-      if (result.success && result.data) {
-        const allItems: ContentItem[] = [];
-        for (const sourceResult of result.data) {
-          if (sourceResult.items) {
-            allItems.push(...sourceResult.items);
-          }
-        }
-        const cutoffDate = getTimeRangeCutoff(timeRange);
-        const filteredItems = allItems.filter((item) => {
-          const itemDate = new Date(item.publishedAt).getTime();
-          return itemDate >= cutoffDate.getTime();
-        });
-
-        const scoredItems = filteredItems.map((item) => ({
-          ...item,
-          discoveryScore: calculateContentDiscoveryScore(item),
-        }));
-        scoredItems.sort((a, b) => (b.discoveryScore || 0) - (a.discoveryScore || 0));
-        setContentItems(scoredItems);
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      console.error("Content fetch error:", err);
-    } finally {
-      setIsLoadingContent(false);
-    }
-  }
-
-  async function loadTrackedCreators() {
-    if (!user) return;
-    setIsLoadingCreators(true);
-    try {
-      const response = await fetch(`/api/creators?userId=${user.uid}`);
-      const result = await response.json();
-      if (result.success) {
-        setTrackedCreators(result.data);
-      }
-    } catch (error) {
-      console.error("Failed to load creators:", error);
-    } finally {
-      setIsLoadingCreators(false);
-    }
-  }
-
-  async function handleTrackCreator() {
-    if (!user || !creatorUrl.trim()) return;
-    setIsTrackingCreator(true);
-    try {
-      const response = await fetch("/api/creators", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.uid,
-          channelUrl: creatorUrl.trim(),
-        }),
-      });
-      const result = await response.json();
-      if (result.success) {
-        setTrackedCreators((prev) => [result.data, ...prev]);
-        setCreatorUrl("");
-        toast.success("Creator tracked!");
-      } else {
-        toast.error(result.error || "Failed to track creator");
-      }
-    } catch {
-      toast.error("Failed to track creator");
-    } finally {
-      setIsTrackingCreator(false);
-    }
-  }
-
-  function getTimeRangeCutoff(range: TimeRange): Date {
-    const now = new Date();
-    switch (range) {
-      case "day":
-        return new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      case "week":
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      case "month":
-        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      case "year":
-        return new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-      default:
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    }
-  }
-
-  function calculateSecondsUntilMidnight(): number {
-    const now = new Date();
-    const midnight = new Date(now);
-    midnight.setHours(24, 0, 0, 0);
-    return Math.floor((midnight.getTime() - now.getTime()) / 1000);
-  }
-
-  async function handleSaveToBoard(boardId: string) {
-    if (!user || !pendingSaveVideo) return;
-    try {
-      const { collection, addDoc, doc, updateDoc, increment, serverTimestamp } = await import("firebase/firestore");
-      const { db } = await import("@/lib/firebase");
-      await addDoc(collection(db, "users", user.uid, "boards", boardId, "items"), {
-        type: "video",
-        title: pendingSaveVideo.title,
-        thumbnail: pendingSaveVideo.thumbnail,
-        videoId: pendingSaveVideo.id,
-        channelTitle: pendingSaveVideo.channelTitle,
-        viewCount: pendingSaveVideo.viewCount,
-        outlierScore: pendingSaveVideo.outlierScore,
-        hookType: pendingSaveVideo.hookType,
-        estimatedStructure: pendingSaveVideo.estimatedStructure,
-        duration: pendingSaveVideo.duration,
-        publishedAt: pendingSaveVideo.publishedAt,
-        createdAt: serverTimestamp(),
-      });
-      await updateDoc(doc(db, "users", user.uid, "boards", boardId), {
-        itemCount: increment(1),
-        updatedAt: serverTimestamp(),
-      });
-      toast.success("Saved to board!");
-    } catch {
-      toast.error("Failed to save video");
-    } finally {
-      setPendingSaveVideo(null);
-      setBoardPickerOpen(false);
-    }
-  }
-
-  async function handleSaveContentToBoard(boardId: string) {
-    if (!user || !pendingSaveContent) return;
-    try {
-      const { collection, addDoc, doc, updateDoc, increment, serverTimestamp } = await import("firebase/firestore");
-      const { db } = await import("@/lib/firebase");
-      await addDoc(collection(db, "users", user.uid, "boards", boardId, "items"), {
-        type: "post",
-        title: pendingSaveContent.title,
-        thumbnail: pendingSaveContent.thumbnail,
-        url: pendingSaveContent.url,
-        source: pendingSaveContent.source,
-        author: pendingSaveContent.author,
-        score: pendingSaveContent.score,
-        createdAt: serverTimestamp(),
-      });
-      await updateDoc(doc(db, "users", user.uid, "boards", boardId), {
-        itemCount: increment(1),
-        updatedAt: serverTimestamp(),
-      });
-      toast.success("Saved to board!");
-    } catch {
-      toast.error("Failed to save content");
-    } finally {
-      setPendingSaveContent(null);
-      setBoardPickerOpen(false);
-    }
-  }
-
-  function openBoardPickerForVideo(video: VideoWithOutlier) {
-    if (!user) {
-      toast.error("You must be signed in to save");
-      return;
-    }
-    setPendingSaveVideo(video);
-    setPendingSaveContent(null);
-    setBoardPickerOpen(true);
-  }
-
-  function openBoardPickerForContent(item: ContentItem) {
-    if (!user) {
-      toast.error("You must be signed in to save");
-      return;
-    }
-    setPendingSaveContent(item);
-    setPendingSaveVideo(null);
-    setBoardPickerOpen(true);
-  }
-
-  function handleRetry() {
-    setQuotaError(null);
-    let retryQuery: string;
-    if (searchQuery.trim()) {
-      retryQuery = searchQuery.trim();
-    } else if (selectedCategory !== "All") {
-      retryQuery = selectedCategory;
-    } else {
-      const allCats = [...activeCategories, ...customCategories];
-      retryQuery = allCats.length > 0 ? allCats.join(" | ") : "trending";
-    }
-    const controller = new AbortController();
-    fetchVideos(retryQuery, controller.signal);
-    fetchContent(retryQuery, controller.signal);
+  function onRetry() {
+    handleRetry({
+      searchQuery,
+      selectedCategory,
+      activeCategories,
+      customCategories,
+      timePeriod: selectedTimePeriod,
+    });
   }
 
   function handleSearchSubmit(e: React.FormEvent) {
@@ -747,8 +369,8 @@ function DiscoverPageContent() {
     if (!searchQuery.trim()) return;
     setVideos([]);
     setContentItems([]);
-    fetchVideos(searchQuery.trim());
-    fetchContent(searchQuery.trim());
+    fetchVideos({ queries: [searchQuery.trim()], timePeriod: selectedTimePeriod });
+    fetchContent({ query: searchQuery.trim(), timePeriod: selectedTimePeriod });
   }
 
   function togglePlatform(platformId: string) {
@@ -756,208 +378,6 @@ function DiscoverPageContent() {
       prev.includes(platformId) ? prev.filter((p) => p !== platformId) : [...prev, platformId]
     );
   }
-
-  function handleAddCategory() {
-    if (!newCategory.trim()) return;
-    const trimmed = newCategory.trim();
-    if (!activeCategories.includes(trimmed) && !customCategories.includes(trimmed) && trimmed !== "All") {
-      setCustomCategories((prev) => [...prev, trimmed]);
-    }
-    setNewCategory("");
-    setShowAddCategory(false);
-  }
-
-  const allCategories = ["All", ...activeCategories, ...customCategories];
-
-  const filteredVideos = useMemo(() => {
-    let filtered = [...videos];
-    // Search filter
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter((v) => v.title.toLowerCase().includes(q) || (v.channelTitle || "").toLowerCase().includes(q));
-    }
-    // Outlier filter
-    if (selectedOutlier !== "any") {
-      const outlierMap: Record<string, number> = { "3x": 3, "5x": 5, "10x": 10, "20x": 20 };
-      const minOutlier = outlierMap[selectedOutlier] || 1;
-      filtered = filtered.filter((v) => (v.outlierScore || 0) >= minOutlier);
-    }
-    // Platform filter - check if youtube is selected
-    if (!selectedPlatforms.includes("youtube")) {
-      filtered = [];
-    }
-    // Format filter
-    if (selectedFormat === "shorts") {
-      filtered = filtered.filter((v) => {
-        const durationParts = v.duration.split(":").map(Number);
-        const seconds = durationParts.length === 3
-          ? durationParts[0] * 3600 + durationParts[1] * 60 + durationParts[2]
-          : durationParts.length === 2
-            ? durationParts[0] * 60 + durationParts[1]
-            : 0;
-        return seconds <= 60;
-      });
-    } else if (selectedFormat === "videos") {
-      filtered = filtered.filter((v) => {
-        const durationParts = v.duration.split(":").map(Number);
-        const seconds = durationParts.length === 3
-          ? durationParts[0] * 3600 + durationParts[1] * 60 + durationParts[2]
-          : durationParts.length === 2
-            ? durationParts[0] * 60 + durationParts[1]
-            : 0;
-        return seconds > 60;
-      });
-    }
-    // Time period filter (from filter panel)
-    const timePeriodMs: Record<string, number> = {
-      week: 7 * 24 * 60 * 60 * 1000,
-      month: 30 * 24 * 60 * 60 * 1000,
-      "3months": 90 * 24 * 60 * 60 * 1000,
-      year: 365 * 24 * 60 * 60 * 1000,
-      all: Infinity,
-    };
-    const periodCutoff = Date.now() - (timePeriodMs[selectedTimePeriod] || timePeriodMs["3months"]);
-    if (periodCutoff !== -Infinity) {
-      filtered = filtered.filter((v) => new Date(v.publishedAt).getTime() >= periodCutoff);
-    }
-    return filtered;
-  }, [videos, searchQuery, selectedCategory, selectedOutlier, selectedPlatforms, selectedFormat, selectedTimePeriod]);
-
-  const filteredArticles = useMemo(() => {
-    let filtered = [...contentItems];
-    // Search filter
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter((item) => item.title.toLowerCase().includes(q) || (item.author || "").toLowerCase().includes(q));
-    }
-    // Platform filter — map content sources to selected platforms
-    // Direct matches: substack, instagram, tiktok, linkedin
-    // "twitter" platform maps to "x" source
-    // hackernews, reddit, devto show if ANY non-YouTube platform is selected
-    const platformToSource: Record<string, string> = { twitter: "x", substack: "substack", instagram: "instagram", tiktok: "tiktok", linkedin: "linkedin" };
-    const activeSources = selectedPlatforms.map((p) => platformToSource[p]).filter(Boolean);
-    const hasAnyContentPlatform = selectedPlatforms.some((p) => p !== "youtube");
-    if (!hasAnyContentPlatform) {
-      filtered = [];
-    } else {
-      filtered = filtered.filter((item) => {
-        // New platform sources filter directly
-        if (["x", "substack", "instagram", "tiktok", "linkedin"].includes(item.source)) {
-          return activeSources.includes(item.source);
-        }
-        // Legacy sources (hackernews, reddit, devto) show when any content platform is active
-        return true;
-      });
-    }
-    // Time period filter (from filter panel)
-    const timePeriodMs: Record<string, number> = {
-      week: 7 * 24 * 60 * 60 * 1000,
-      month: 30 * 24 * 60 * 60 * 1000,
-      "3months": 90 * 24 * 60 * 60 * 1000,
-      year: 365 * 24 * 60 * 60 * 1000,
-      all: Infinity,
-    };
-    const periodCutoff = Date.now() - (timePeriodMs[selectedTimePeriod] || timePeriodMs["3months"]);
-    if (periodCutoff !== -Infinity) {
-      filtered = filtered.filter((item) => new Date(item.publishedAt).getTime() >= periodCutoff);
-    }
-    return filtered;
-  }, [contentItems, searchQuery, selectedCategory, selectedPlatforms, selectedTimePeriod]);
-
-  const unifiedItemsMemo = useMemo(() => {
-    const scoredVideos = filteredVideos.map((video) => ({
-      ...video,
-      contentType: "video" as const,
-      discoveryScore: video.discoveryScore ?? calculateVideoDiscoveryScore(video),
-    }));
-    const scoredArticles = filteredArticles.map((item) => ({
-      ...item,
-      contentType: "article" as const,
-      discoveryScore: item.discoveryScore ?? calculateContentDiscoveryScore(item),
-    }));
-
-    const combined = [...scoredVideos, ...scoredArticles];
-
-    switch (sortBy) {
-      case "trending":
-        combined.sort((a, b) => {
-          const aVelocity = a.contentType === "video"
-            ? (a.viewCount || 0) / Math.max(getAgeHours(a.publishedAt), 0.01)
-            : (a.score || 0) / Math.max(getAgeHours(a.publishedAt), 0.01);
-          const bVelocity = b.contentType === "video"
-            ? (b.viewCount || 0) / Math.max(getAgeHours(b.publishedAt), 0.01)
-            : (b.score || 0) / Math.max(getAgeHours(b.publishedAt), 0.01);
-          return bVelocity - aVelocity;
-        });
-        break;
-      case "recent":
-        combined.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-        break;
-      case "discussed":
-        combined.sort((a, b) => {
-          const aComments = a.contentType === "video" ? (a.commentCount || 0) : (a.score || 0);
-          const bComments = b.contentType === "video" ? (b.commentCount || 0) : (b.score || 0);
-          return bComments - aComments;
-        });
-        break;
-      case "top":
-      default:
-        // Best items first: sort by discoveryScore (combines engagement + recency)
-        combined.sort((a, b) => b.discoveryScore - a.discoveryScore);
-    }
-
-    return combined;
-  }, [filteredVideos, filteredArticles, sortBy]);
-
-  const sortedVideos = useMemo(() => {
-    const sorted = [...filteredVideos];
-    switch (sortBy) {
-      case "trending":
-        sorted.sort((a, b) => {
-          const aVelocity = (a.viewCount || 0) / Math.max(getAgeHours(a.publishedAt), 0.01);
-          const bVelocity = (b.viewCount || 0) / Math.max(getAgeHours(b.publishedAt), 0.01);
-          return bVelocity - aVelocity;
-        });
-        break;
-      case "top":
-        sorted.sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0));
-        break;
-      case "recent":
-        sorted.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-        break;
-      case "discussed":
-        sorted.sort((a, b) => (b.commentCount || 0) - (a.commentCount || 0));
-        break;
-      default:
-        sorted.sort((a, b) => (b.discoveryScore || 0) - (a.discoveryScore || 0));
-    }
-    return sorted;
-  }, [filteredVideos, sortBy]);
-
-  const sortedArticles = useMemo(() => {
-    const sorted = [...filteredArticles];
-    switch (sortBy) {
-      case "trending":
-        sorted.sort((a, b) => {
-          const aVelocity = (a.score || 0) / Math.max(getAgeHours(a.publishedAt), 0.01);
-          const bVelocity = (b.score || 0) / Math.max(getAgeHours(b.publishedAt), 0.01);
-          return bVelocity - aVelocity;
-        });
-        break;
-      case "top":
-        sorted.sort((a, b) => (b.score || 0) - (a.score || 0));
-        break;
-      case "recent":
-        sorted.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-        break;
-      case "discussed":
-        sorted.sort((a, b) => (b.score || 0) - (a.score || 0));
-        break;
-      default:
-        sorted.sort((a, b) => (b.discoveryScore || 0) - (a.discoveryScore || 0));
-    }
-    return sorted;
-  }, [filteredArticles, sortBy]);
 
   // Auth guard — redirect to login if not authenticated
   useEffect(() => {
@@ -977,226 +397,225 @@ function DiscoverPageContent() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] flex">
-      {/* Sidebar */}
-      <div className="w-64 bg-[#181818] border-r border-[#1a1a1a] flex flex-col h-screen sticky top-0 shrink-0">
-        <div className="p-4">
-          <button
-            onClick={() => router.push("/")}
-            className="flex items-center gap-2 text-white font-semibold text-lg"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            TubeForge
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-3 space-y-1">
-          <SidebarItem icon="home" label="Home" onClick={() => router.push("/")} />
-          <SidebarItem icon="research" label="Research" active={!activeWorkspace} onClick={() => setActiveWorkspace(null)} />
-          {/* More dropdown */}
-          <div className="relative">
-            <button
-              onClick={(e) => { e.stopPropagation(); setMoreMenuOpen(!moreMenuOpen); }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors text-[#888] hover:bg-[#1a1a1a] hover:text-white"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
-              </svg>
-              <span className="truncate">More</span>
-            </button>
-            {moreMenuOpen && (
-              <div className="absolute left-0 top-full mt-1 w-52 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl z-50 py-1.5" onClick={(e) => e.stopPropagation()}>
-                <button onClick={() => setMoreMenuOpen(false)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                  <span>Skills</span>
-                </button>
-                <button onClick={() => setMoreMenuOpen(false)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
-                  <span>Highlights</span>
-                </button>
-                <button onClick={() => setMoreMenuOpen(false)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                  <span>Identities</span>
-                </button>
-                <button onClick={() => setMoreMenuOpen(false)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                  <span>Capture</span>
-                </button>
-                <div className="my-1 border-t border-[#2a2a2a]" />
-                <button onClick={() => setMoreMenuOpen(false)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                  <span>Customize sidebar</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="pt-4 pb-2">
-            <p className="text-xs text-[#666] px-3 uppercase tracking-wider font-medium">Analyze</p>
-          </div>
-          {/* Chat Nav with Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setChatDropdownOpen(!chatDropdownOpen)}
-              onMouseEnter={() => setChatDropdownOpen(true)}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                chatDropdownOpen ? "bg-[#1a1a1a] text-white" : "text-[#888] hover:bg-[#1a1a1a] hover:text-white"
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-4.72C3.512 14.042 3 12.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              <span className="truncate">Chat</span>
-              <svg
-                className={`w-3 h-3 ml-auto transition-transform ${chatDropdownOpen ? "rotate-180" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            {chatDropdownOpen && (
-              <div
-                className="mt-1 ml-4 space-y-0.5"
-                onMouseLeave={() => setChatDropdownOpen(false)}
-              >
-                {isLoadingChatSessions ? (
-                  <div className="px-3 py-2 text-xs text-[#666]">Loading...</div>
-                ) : chatSessions.length > 0 ? (
-                  chatSessions.map((session) => (
-                    <button
-                      key={session.id}
-                      onClick={() => router.push(`/boards?chatSession=${session.id}`)}
-                      className="w-full text-left px-3 py-1.5 rounded-md text-xs text-[#888] hover:bg-[#1a1a1a] hover:text-white transition-colors truncate"
-                    >
-                      {session.title}
-                    </button>
-                  ))
-                ) : (
-                  <div className="px-3 py-2 text-xs text-[#666]">No chat sessions yet</div>
-                )}
-                <button
-                  onClick={() => router.push("/boards")}
-                  className="w-full text-left px-3 py-1.5 rounded-md text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                >
-                  + New Chat
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="pt-4 pb-2">
-            <p className="text-xs text-[#666] px-3 uppercase tracking-wider font-medium">Workspace</p>
-          </div>
-          <SidebarItem icon="board" label="My First Board" active={activeWorkspace === "my-first-board"} onClick={() => { setActiveWorkspace("my-first-board"); setResearchTab("discover"); }} />
-          <SidebarItem icon="board" label="My Ideas" active={activeWorkspace === "my-ideas"} onClick={() => { setActiveWorkspace("my-ideas"); setResearchTab("discover"); }} />
-        </div>
-
-        <div className="p-3 border-t border-[#1a1a1a] space-y-1">
-          <SidebarItem icon="academy" label="Academy" onClick={() => {}} />
-          <SidebarItem icon="help" label="Help & Support" onClick={() => {}} />
-          {user && (
-            <div className="flex items-center gap-2 px-3 py-2 mt-2">
-              <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-xs text-white font-medium">
-                {user.displayName?.[0] || user.email?.[0] || "U"}
-              </div>
-              <span className="text-sm text-[#888] truncate">{user.displayName || user.email}</span>
-            </div>
-          )}
-        </div>
-      </div>
+    <div className="h-screen bg-[#0a0a0a] flex overflow-hidden">
+      <AppSidebar
+        activeNav={activeWorkspace ? "board" : "research"}
+        activeWorkspace={activeWorkspace}
+        extraBoards={[]}
+        chatSessions={chatSessions}
+        isLoadingChatSessions={isLoadingChatSessions}
+        onResearchClick={() => { setRightPane(null); setActiveWorkspace(null); }}
+        onWorkspaceClick={(boardId) => { setChatItem(null); setChatSessionId(undefined); setActiveWorkspace(boardId); setResearchTab("discover"); }}
+        onChatSessionClick={(sessionId) => { setRightPane(null); setChatItem(null); setChatSessionId(sessionId); }}
+        onNewChatClick={() => { setRightPane(null); setChatItem(null); setChatSessionId("new"); }}
+      />
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto">
-        {activeWorkspace ? (
-          /* Workspace Board View */
-          <div className="flex-1 flex h-full">
-            {/* Board Left Panel */}
-            <div className={`flex flex-col ${rightPane ? "flex-1 min-w-0" : "flex-1"}`}>
-            {/* Board Header */}
-            <div className="sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-sm border-b border-[#1a1a1a] px-6 py-4 flex items-center justify-between">
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Pane — Discover Content */}
+        <div className="flex-1 overflow-y-auto min-w-0 scrollbar-hide">
+          {activeWorkspace ? (
+            /* Workspace Board View */
+            <div className="flex-1 flex h-full">
+              {/* Board Left Panel */}
+              <div className={`flex flex-col ${rightPane ? "flex-1 min-w-0" : "flex-1"}`}>
+              {/* Board Header */}
+              <div className="sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-sm border-b border-[#1a1a1a] px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <h1 className="text-xl font-semibold text-white">
                   {activeWorkspace === "my-first-board" ? "My First Board" : "My Ideas"}
                 </h1>
-                {/* Add Button */}
-                <div className="relative">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setAddMenuOpen(!addMenuOpen); }}
-                    className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                  </button>
-                  {addMenuOpen && (
-                    <div className="absolute top-full left-0 mt-2 w-56 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl z-50 py-1.5" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => handleAddCard("link")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                        <Link2 className="w-4 h-4" />
-                        <span>Insert a link</span>
-                        <span className="ml-auto text-xs text-[#666]">⇧ L</span>
-                      </button>
-                      <button onClick={() => handleAddCard("document")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                        <FileText className="w-4 h-4" />
-                        <span>Create a document</span>
-                        <span className="ml-auto text-xs text-[#666]">D</span>
-                      </button>
-                      <button onClick={() => handleAddCard("card")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                        <Square className="w-4 h-4" />
-                        <span>Create a card</span>
-                        <span className="ml-auto text-xs text-[#666]">C</span>
-                      </button>
-                      <button onClick={() => handleAddCard("section")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                        <Layers className="w-4 h-4" />
-                        <span>Add section</span>
-                        <span className="ml-auto text-xs text-[#666]">S</span>
-                      </button>
-                      <button onClick={() => handleAddCard("reference")} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                        <BookOpen className="w-4 h-4" />
-                        <span>Add reference</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
+                {/* Add Button — creates a card directly */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleCreateAndOpenCard(); }}
+                  className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                  title="New card"
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => setRightPane({ type: "chat" })} className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors">Chat</button>
-                <button className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors">Share</button>
+                <button onClick={() => { setChatItem(null); setChatSessionId(undefined); setRightPane({ type: "chat", card: editingCard || undefined }); }} className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors cursor-pointer">Chat</button>
               </div>
             </div>
 
             {/* Board Content */}
-            <div className="flex-1 p-6">
+            {editingCard ? (
+              /* Full-screen Card Editor */
+              <div className="flex-1 flex flex-col">
+                {/* Editor Header */}
+                <div className="flex items-center justify-between px-6 py-3 border-b border-[#1a1a1a] shrink-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <button
+                      onClick={closeCardEditor}
+                      className="p-1.5 rounded-lg text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer shrink-0"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <FileText className="w-4 h-4 text-[#666] shrink-0" />
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="bg-transparent text-white font-semibold text-sm focus:outline-none min-w-0 flex-1"
+                      placeholder="Untitled"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-[#555] tabular-nums">
+                      {charCount} chars
+                    </span>
+                    <button
+                      onClick={() => {
+                        handleDeleteCard(editingCard.id);
+                        closeCardEditor();
+                      }}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-900/20 transition-colors cursor-pointer"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={handleSaveCardEdit}
+                        className="px-4 py-1.5 text-sm font-medium bg-emerald-400 text-[#0a0a0a] hover:bg-emerald-300 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Save
+                      </button>
+                  </div>
+                </div>
+                {/* Formatting Toolbar */}
+                <div className="flex items-center gap-0.5 px-5 py-1.5 border-b border-[#1a1a1a] shrink-0">
+                  <button
+                    onClick={() => document.execCommand("bold")}
+                    className="w-7 h-7 flex items-center justify-center rounded text-xs font-bold text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Bold (Ctrl+B)"
+                  >B</button>
+                  <button
+                    onClick={() => document.execCommand("italic")}
+                    className="w-7 h-7 flex items-center justify-center rounded text-xs italic text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Italic (Ctrl+I)"
+                  >I</button>
+                  <button
+                    onClick={() => document.execCommand("underline")}
+                    className="w-7 h-7 flex items-center justify-center rounded text-xs underline text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Underline (Ctrl+U)"
+                  >U</button>
+                  <button
+                    onClick={() => document.execCommand("strikeThrough")}
+                    className="w-7 h-7 flex items-center justify-center rounded text-xs line-through text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Strikethrough"
+                  >S</button>
+                  <div className="w-px h-4 bg-[#2a2a2a] mx-1" />
+                  <button
+                    onClick={() => document.execCommand("formatBlock", false, "h1")}
+                    className="w-7 h-7 flex items-center justify-center rounded text-[11px] font-semibold text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Heading 1"
+                  >H1</button>
+                  <button
+                    onClick={() => document.execCommand("formatBlock", false, "h2")}
+                    className="w-7 h-7 flex items-center justify-center rounded text-[11px] font-semibold text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Heading 2"
+                  >H2</button>
+                  <button
+                    onClick={() => document.execCommand("formatBlock", false, "h3")}
+                    className="w-7 h-7 flex items-center justify-center rounded text-[11px] font-semibold text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Heading 3"
+                  >H3</button>
+                  <button
+                    onClick={() => document.execCommand("formatBlock", false, "p")}
+                    className="w-7 h-7 flex items-center justify-center rounded text-[11px] text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Paragraph"
+                  >P</button>
+                  <div className="w-px h-4 bg-[#2a2a2a] mx-1" />
+                  <button
+                    onClick={() => document.execCommand("insertUnorderedList")}
+                    className="w-7 h-7 flex items-center justify-center rounded text-xs text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Bullet list"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => document.execCommand("insertOrderedList")}
+                    className="w-7 h-7 flex items-center justify-center rounded text-xs text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Numbered list"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 6h14M7 12h14M7 18h14M4 6h.01M4 12h.01M4 18h.01" />
+                    </svg>
+                  </button>
+                  <div className="w-px h-4 bg-[#2a2a2a] mx-1" />
+                  <button
+                    onClick={() => {
+                      document.execCommand("formatBlock", false, "blockquote");
+                      editorRef.current?.focus();
+                    }}
+                    className="w-7 h-7 flex items-center justify-center rounded text-xs text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Blockquote"
+                  >&ldquo;</button>
+                  <button
+                    onClick={() => {
+                      document.execCommand("insertHTML", false, "<hr>");
+                      editorRef.current?.focus();
+                    }}
+                    className="w-7 h-7 flex items-center justify-center rounded text-xs text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Horizontal rule"
+                  >&mdash;</button>
+                  <button
+                    onClick={() => {
+                      const url = prompt("Enter URL:");
+                      if (url) {
+                        try {
+                          const parsed = new URL(url, window.location.origin);
+                          if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                            toast.error("Only http and https links are allowed");
+                            return;
+                          }
+                          document.execCommand("createLink", false, parsed.href);
+                        } catch {
+                          toast.error("Invalid URL");
+                        }
+                      }
+                      editorRef.current?.focus();
+                    }}
+                    className="w-7 h-7 flex items-center justify-center rounded text-xs text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                    title="Insert link"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m0-5.656a4 4 0 015.656 0l4 4a4 4 0 01-5.656 5.656l-1.102-1.101" />
+                    </svg>
+                  </button>
+                </div>
+                {/* Editor Body */}
+                <div className="flex-1 overflow-y-auto scrollbar-hide p-8">
+                  <div
+                    ref={editorRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={syncContentFromEditor}
+                    onBlur={syncContentFromEditor}
+                    className="w-full min-h-[calc(100vh-260px)] bg-transparent text-[15px] text-[#ccc] placeholder:text-[#555] focus:outline-none leading-relaxed [&>h1]:text-2xl [&>h1]:font-bold [&>h1]:text-white [&>h1]:mb-3 [&>h1]:mt-6 [&>h2]:text-xl [&>h2]:font-semibold [&>h2]:text-white [&>h2]:mb-2 [&>h2]:mt-5 [&>h3]:text-lg [&>h3]:font-semibold [&>h3]:text-white [&>h3]:mb-2 [&>h3]:mt-4 [&>p]:mb-2 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:mb-3 [&>ol]:list-decimal [&>ol]:pl-5 [&>ol]:mb-3 [&>li]:mb-1 [&>blockquote]:border-l-2 [&>blockquote]:border-[#3a3a3a] [&>blockquote]:pl-4 [&>blockquote]:text-[#999] [&>blockquote]:my-3 [&>hr]:border-[#2a2a2a] [&>hr]:my-4 [&>a]:text-emerald-400 [&>a]:underline [&>b]:font-bold [&>strong]:font-bold [&>i]:italic [&>em]:italic [&>u]:underline [&>s]:line-through [&>del]:line-through"
+                    data-placeholder="Start writing..."
+                  />
+                  <style jsx>{`
+                    [data-placeholder]:empty:before {
+                      content: attr(data-placeholder);
+                      color: #555;
+                      pointer-events: none;
+                    }
+                  `}</style>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 p-6">
               {isLoadingWorkspace ? (
                 <div className="flex items-center justify-center py-20">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {/* First card - always shows board description */}
-                  <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 aspect-[4/3] flex flex-col overflow-hidden">
-                    {activeWorkspace === "my-ideas" ? (
-                      <p className="text-sm text-[#888]">This is a card. Cards are useful for capturing quick ideas or notes. Use this board to capture ideas, paste links, or save social posts.</p>
-                    ) : (
-                      <>
-                        <p className="text-xs text-[#888] mb-3">Your garden for ideas.<br />This is a document, and it lives inside a board.</p>
-                        <h3 className="text-xs font-semibold text-white mb-1">What you can do with boards</h3>
-                        <ul className="text-xs text-[#888] space-y-0.5 mb-3 list-disc list-inside">
-                          <li>Write content, newsletters, scripts, and more</li>
-                          <li>Add social posts, links, PDFs, and raw ideas</li>
-                          <li>Chat with a single item, or with the whole board at once</li>
-                        </ul>
-                        <h3 className="text-xs font-semibold text-white mb-1">Why boards</h3>
-                        <p className="text-xs text-[#888] mb-3">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, the Creators tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
-                        <h3 className="text-xs font-semibold text-white mb-1">Not sure where to start?</h3>
-                        <p className="text-xs text-[#888]">Use boards for the projects you already work on. A simple system: make one board each week and drop that week&apos;s content and ideas inside. It keeps everything organized without much effort.</p>
-                      </>
-                    )}
-                  </div>
-                  {/* User-created cards */}
+                <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 space-y-4">
                   {workspaceCards.map((card) => (
                     <div
                       key={card.id}
@@ -1204,135 +623,63 @@ function DiscoverPageContent() {
                         e.preventDefault();
                         setCardContextMenu({ card, x: e.clientX, y: e.clientY });
                       }}
-                      className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 hover:border-[#3a3a3a] transition-colors cursor-pointer aspect-[4/3] flex flex-col"
+                      onClick={() => openCardEditor(card)}
+                      className="break-inside-avoid bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 hover:border-[#3a3a3a] transition-colors cursor-pointer"
                     >
                       <h3 className="text-sm font-medium text-white">{card.title}</h3>
-                      {card.content && <p className="text-xs text-[#888] mt-2 line-clamp-4 flex-1">{card.content}</p>}
-                      {card.url && <p className="text-xs text-blue-400 mt-2 truncate">{card.url}</p>}
+                      {card.content && <p className="text-xs text-[#888] mt-2 whitespace-pre-wrap line-clamp-6 break-words">{card.content}</p>}
+                      {card.url && <p className="text-xs text-emerald-400 mt-2 truncate">{card.url}</p>}
+                      <p className="text-[10px] text-[#555] mt-3">
+                        {new Date(card.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </p>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
+              </div>
+            )}
             </div>{/* end Board Left Panel */}
 
             {/* Right Pane - Split Screen */}
-            {rightPane && (
+            {rightPane && rightPane.type === "info" && (
               <div className="w-[480px] border-l border-[#1a1a1a] flex flex-col h-full bg-[#0a0a0a]">
-                {rightPane.type === "info" ? (
-                  /* Info Pane - Welcome/Board Info */
-                  <>
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a]">
-                      <span className="text-sm text-[#888]">New chat</span>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => setRightPane(null)} className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-6">
-                      <h1 className="text-2xl font-bold text-white mb-4">Welcome to Eden</h1>
-                      <p className="text-sm text-[#888] mb-6">Your garden for ideas.<br />This is a document, and it lives inside a board.</p>
-                      <h2 className="text-lg font-semibold text-white mb-3">What you can do with boards</h2>
-                      <ul className="text-sm text-[#888] space-y-2 mb-6 list-disc list-inside">
-                        <li>Write content, newsletters, scripts, and more</li>
-                        <li>Add social posts, links, PDFs, and raw ideas</li>
-                        <li>Chat with a single item, or with the whole board at once</li>
-                      </ul>
-                      <h2 className="text-lg font-semibold text-white mb-3">Why boards</h2>
-                      <p className="text-sm text-[#888] mb-6">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, the Creators tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
-                      <h2 className="text-lg font-semibold text-white mb-3">Not sure where to start?</h2>
-                      <p className="text-sm text-[#888] mb-6">Use boards for the projects you already work on. A simple system: make one board each week and drop that week&apos;s content and ideas inside. It keeps everything organized without much effort.</p>
-                      <h2 className="text-lg font-semibold text-white mb-3">Need a hand?</h2>
-                      <p className="text-sm text-[#888]">Join our Discord to talk branding, content, and ideas with other Eden creators: <span className="text-emerald-400">discord.gg/edendotso</span></p>
-                      <p className="text-sm text-[#888] mt-2">Run into a problem? Email us anytime at support@eden.so</p>
-                    </div>
-                  </>
-                ) : (
-                  /* Chat Pane - Chat with card context */
-                  <>
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a]">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-white">New chat</span>
-                        <svg className="w-3 h-3 text-[#666]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                        </button>
-                        <button className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>
-                        </button>
-                        <button className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
-                        </button>
-                        <button onClick={() => setRightPane(null)} className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex-1 flex flex-col items-center justify-center px-6">
-                      <div className="text-center mb-8">
-                        <span className="text-3xl mb-2 block">🧪</span>
-                        <h2 className="text-xl font-semibold text-white">What&apos;s the idea?</h2>
-                      </div>
-                      {/* Card context chip */}
-                      {rightPane.card && (
-                        <div className="flex items-center gap-2 mb-4 bg-[#1a1a1a] border border-[#2a2a2a] rounded-full px-3 py-1.5">
-                          <svg className="w-3 h-3 text-[#888]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={1.5} /></svg>
-                          <span className="text-xs text-[#888] max-w-[200px] truncate">{rightPane.card.title || rightPane.card.content || "This is a card..."}</span>
-                          <button onClick={() => setRightPane({ ...rightPane, card: undefined })} className="text-[#666] hover:text-white">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                          </button>
-                        </div>
-                      )}
-                      {/* Chat input */}
-                      <div className="w-full max-w-md">
-                        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-3">
-                          <textarea
-                            value={chatInput}
-                            onChange={(e) => setChatInput(e.target.value)}
-                            placeholder="@ mention creators, or / to run a skill..."
-                            className="w-full bg-transparent text-sm text-white placeholder-[#666] resize-none focus:outline-none min-h-[60px]"
-                          />
-                          <div className="flex items-center justify-between mt-2">
-                            <button className="w-6 h-6 flex items-center justify-center rounded text-[#666] hover:text-white">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                            </button>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-[#666]">Eve Lite</span>
-                              <button className="w-6 h-6 flex items-center justify-center rounded text-[#666] hover:text-white">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                              </button>
-                              <button className="w-7 h-7 flex items-center justify-center rounded-full bg-[#2a2a2a] text-[#888] hover:bg-[#3a3a3a] hover:text-white transition-colors">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                        {/* Quick action buttons */}
-                        <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
-                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#888] bg-[#1a1a1a] border border-[#2a2a2a] rounded-full hover:border-[#3a3a3a] hover:text-white transition-colors">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                            Start Writing
-                          </button>
-                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#888] bg-[#1a1a1a] border border-[#2a2a2a] rounded-full hover:border-[#3a3a3a] hover:text-white transition-colors">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                            Creator Research
-                          </button>
-                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#888] bg-[#1a1a1a] border border-[#2a2a2a] rounded-full hover:border-[#3a3a3a] hover:text-white transition-colors">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-                            Topic Research
-                          </button>
-                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#888] bg-[#1a1a1a] border border-[#2a2a2a] rounded-full hover:border-[#3a3a3a] hover:text-white transition-colors">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                            Watchlist Overview
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a]">
+                  <span className="text-sm text-[#888]">New chat</span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setRightPane(null)} className="w-7 h-7 flex items-center justify-center rounded-md text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors cursor-pointer">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6">
+                  <h1 className="text-2xl font-bold text-white mb-4">Welcome to Outlierly</h1>
+                  <p className="text-sm text-[#888] mb-6">Your workspace for ideas.<br />This is a document, and it lives inside a board.</p>
+                  <h2 className="text-lg font-semibold text-white mb-3">What you can do with boards</h2>
+                  <ul className="text-sm text-[#888] space-y-2 mb-6 list-disc list-inside">
+                    <li>Write content, newsletters, scripts, and more</li>
+                    <li>Add social posts, links, PDFs, and raw ideas</li>
+                    <li>Chat with a single item, or with the whole board at once</li>
+                  </ul>
+                  <h2 className="text-lg font-semibold text-white mb-3">Why boards</h2>
+                  <p className="text-sm text-[#888] mb-6">Think of a board as a curated home for a project. You&apos;ll find ideas in the Discover tab, the Creators tab, in chat, and in your weekly brief — but boards are where you organize them and keep them safe.</p>
+                  <h2 className="text-lg font-semibold text-white mb-3">Not sure where to start?</h2>
+                  <p className="text-sm text-[#888] mb-6">Use boards for the projects you already work on. A simple system: make one board each week and drop that week&apos;s content and ideas inside. It keeps everything organized without much effort.</p>
+                  <h2 className="text-lg font-semibold text-white mb-3">Need a hand?</h2>
+                  <p className="text-sm text-[#888]">Join our Discord to talk branding, content, and ideas with other Outlierly creators: <span className="text-emerald-400">discord.gg/edendotso</span></p>
+                  <p className="text-sm text-[#888] mt-2">Run into a problem? Email us anytime at support@eden.so</p>
+                </div>
+              </div>
+            )}
+
+            {rightPane && rightPane.type === "chat" && (
+              <div className="w-[550px] border-l border-[#1a1a1a] h-full bg-[#0a0a0a] overflow-hidden shrink-0">
+                <ContentChatPanel
+                  isOpen={true}
+                  onClose={() => setRightPane(null)}
+                  card={rightPane.card ?? editingCard ?? undefined}
+                  userId={user?.uid}
+                  inline={true}
+                />
               </div>
             )}
 
@@ -1349,25 +696,17 @@ function DiscoverPageContent() {
                 {activeWorkspace === "my-ideas" ? (
                   /* My Ideas context menu */
                   <>
-                    <button onClick={() => { setRightPane({ type: "chat", card: cardContextMenu.card }); setCardContextMenu(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 14.583 3 13.303 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                    <button onClick={() => { setChatItem(null); setChatSessionId(undefined); if (!(rightPane?.type === "chat" && rightPane?.card?.id === cardContextMenu.card.id)) setRightPane({ type: "chat", card: cardContextMenu.card }); setCardContextMenu(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors cursor-pointer">
+                      <MessageSquare className="w-4 h-4" />
                       <span>Chat with</span>
                     </button>
-                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
-                      <span>Color</span>
-                    </button>
                     <div className="my-1 border-t border-[#2a2a2a]" />
-                    <button onClick={() => handleDuplicateCard(cardContextMenu.card)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                    <button onClick={() => handleDuplicateCard(cardContextMenu.card)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors cursor-pointer">
+                      <Copy className="w-4 h-4" />
                       <span>Duplicate to Board</span>
                     </button>
-                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-                      <span>Move to Board</span>
-                    </button>
                     <div className="my-1 border-t border-[#2a2a2a]" />
-                    <button onClick={() => handleDeleteCard(cardContextMenu.card.id)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-900/20 transition-colors">
+                    <button onClick={() => handleDeleteCard(cardContextMenu.card.id)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-900/20 transition-colors cursor-pointer">
                       <Trash2 className="w-4 h-4" />
                       <span>Delete</span>
                     </button>
@@ -1375,38 +714,30 @@ function DiscoverPageContent() {
                 ) : (
                   /* My First Board context menu */
                   <>
-                    <button onClick={() => { setRightPane({ type: "info", card: cardContextMenu.card }); setCardContextMenu(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                    <button onClick={() => { setRightPane({ type: "info", card: cardContextMenu.card }); setCardContextMenu(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors cursor-pointer">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h7" /></svg>
                       <span>Open in Pane</span>
                       <span className="ml-auto text-xs text-[#666]">Alt ⇧</span>
                     </button>
-                    <button onClick={() => { setRightPane({ type: "chat", card: cardContextMenu.card }); setCardContextMenu(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                    <button onClick={() => { setChatItem(null); setChatSessionId(undefined); if (!(rightPane?.type === "chat" && rightPane?.card?.id === cardContextMenu.card.id)) setRightPane({ type: "chat", card: cardContextMenu.card }); setCardContextMenu(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors cursor-pointer">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 14.583 3 13.303 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                       <span>Chat with</span>
                     </button>
-                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                      <span>Download</span>
-                    </button>
-                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                      <span>Rename</span>
-                    </button>
                     <div className="my-1 border-t border-[#2a2a2a]" />
-                    <button onClick={() => handleDuplicateCard(cardContextMenu.card)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                    <button onClick={() => handleDuplicateCard(cardContextMenu.card)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors cursor-pointer">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                       <span>Duplicate to Board</span>
                     </button>
-                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                    <button onClick={() => handleMoveToBoard(cardContextMenu.card)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors cursor-pointer">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
                       <span>Move to Board</span>
                     </button>
-                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors">
+                    <button onClick={() => handleReferenceToBoard(cardContextMenu.card)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#ccc] hover:bg-[#2a2a2a] hover:text-white transition-colors cursor-pointer">
                       <BookOpen className="w-4 h-4" />
                       <span>Reference on Board</span>
                     </button>
                     <div className="my-1 border-t border-[#2a2a2a]" />
-                    <button onClick={() => handleDeleteCard(cardContextMenu.card.id)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-900/20 transition-colors">
+                    <button onClick={() => handleDeleteCard(cardContextMenu.card.id)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-900/20 transition-colors cursor-pointer">
                       <Trash2 className="w-4 h-4" />
                       <span>Delete</span>
                     </button>
@@ -1414,6 +745,7 @@ function DiscoverPageContent() {
                 )}
               </div>
             )}
+
           </div>
         ) : (
         <>
@@ -1430,13 +762,13 @@ function DiscoverPageContent() {
                   placeholder="Search videos, articles, creators..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg pl-10 pr-32 py-2.5 text-sm text-white placeholder-[#666] focus:outline-none focus:border-[#3a3a3a]"
+                  className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg pl-10 pr-32 py-2.5 text-sm text-white placeholder-[#666] focus:outline-none focus:border-[#3a3a3a] transition-colors"
                 />
                 {/* Filter button inside search input */}
                 <button
                   type="button"
                   onClick={() => setShowFilters(!showFilters)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#2a2a2a] hover:bg-[#3a3a3a] transition-colors text-xs text-[#888]"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#2a2a2a] hover:bg-[#3a3a3a] transition-colors text-xs text-[#ccc] hover:text-white cursor-pointer"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
@@ -1453,281 +785,37 @@ function DiscoverPageContent() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleRetry}
-              disabled={isLoadingVideos || isLoadingContent}
-              className="text-[#888] hover:text-white"
+              onClick={onRetry}
+              disabled={isFeedLoading}
+              className="text-[#888] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <svg className={`w-4 h-4 ${isLoadingVideos || isLoadingContent ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className={`w-4 h-4 ${isFeedLoading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </Button>
           </div>
 
-          {/* Filter Dropdown - Eden style */}
           {showFilters && (
-            <div
-              ref={filterRef}
-              className="absolute right-6 top-16 z-50 w-[320px] max-h-[420px] overflow-y-auto scrollbar-hide bg-[#141414] border border-[#2a2a2a] rounded-xl shadow-2xl"
-            >
-              {/* Filter Header */}
-              <div className="sticky top-0 z-10 bg-[#141414] border-b border-[#2a2a2a] px-5 py-3 flex items-center justify-center">
-                <div className="flex items-center gap-2 text-xs text-[#888]">
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                  </svg>
-                  <span className="text-white font-medium">All</span>
-                  <span>·</span>
-                  <span>Last 3 months</span>
-                  <span>·</span>
-                  <span>10×</span>
-                  <span>·</span>
-                  <svg className={`w-3 h-3 transition-transform rotate-180`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-              </div>
-
-              <div className="p-5 space-y-6">
-                {/* PLATFORMS */}
-                <div>
-                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Platforms</p>
-                  <div className="space-y-1">
-                    {PLATFORMS.map((platform) => (
-                      <button
-                        key={platform.id}
-                        onClick={() => togglePlatform(platform.id)}
-                        className="w-full flex items-center justify-between px-2 py-2.5 rounded-lg hover:bg-[#1e1e1e] transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <PlatformIcon id={platform.id} className="w-4 h-4 text-white" />
-                          <span className="text-sm text-white">{platform.label}</span>
-                        </div>
-                        <div className={`w-5 h-5 rounded flex items-center justify-center ${
-                          selectedPlatforms.includes(platform.id)
-                            ? "bg-green-500"
-                            : "border border-[#3a3a3a]"
-                        }`}>
-                          {selectedPlatforms.includes(platform.id) && (
-                            <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between mt-2 px-2">
-                    <span className="text-xs text-[#666]">{selectedPlatforms.length} of {PLATFORMS.length} selected</span>
-                    <button
-                      onClick={() => setSelectedPlatforms(PLATFORMS.map((p) => p.id))}
-                      className="text-xs text-[#888] hover:text-white"
-                    >
-                      Select all
-                    </button>
-                  </div>
-                </div>
-
-                {/* FORMAT */}
-                <div>
-                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Format</p>
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-xs text-[#888] mb-2 flex items-center gap-2">
-                        <PlatformIcon id="youtube" className="w-3.5 h-3.5 text-red-500" />
-                        YouTube
-                      </p>
-                      <div className="flex gap-2">
-                        {(["videos", "shorts", "all"] as const).map((fmt) => (
-                          <button
-                            key={fmt}
-                            onClick={() => setSelectedFormat(fmt as typeof selectedFormat)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                              selectedFormat === fmt
-                                ? "bg-[#2a2a2a] text-white"
-                                : "text-[#666] hover:text-[#888]"
-                            }`}
-                          >
-                            {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-[#888] mb-2 flex items-center gap-2">
-                        <PlatformIcon id="substack" className="w-3.5 h-3.5 text-orange-500" />
-                        Substack
-                      </p>
-                      <div className="flex gap-2">
-                        {(["articles", "notes", "all"] as const).map((fmt) => (
-                          <button
-                            key={`sub-${fmt}`}
-                            onClick={() => setSelectedFormat(fmt as typeof selectedFormat)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                              selectedFormat === fmt
-                                ? "bg-[#2a2a2a] text-white"
-                                : "text-[#666] hover:text-[#888]"
-                            }`}
-                          >
-                            {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-[#888] mb-2 flex items-center gap-2">
-                        <PlatformIcon id="instagram" className="w-3.5 h-3.5 text-pink-500" />
-                        Instagram
-                      </p>
-                      <div className="flex gap-2">
-                        {(["reels", "carousel", "photos", "all"] as const).map((fmt) => (
-                          <button
-                            key={`ig-${fmt}`}
-                            onClick={() => setSelectedFormat(fmt as typeof selectedFormat)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                              selectedFormat === fmt
-                                ? "bg-[#2a2a2a] text-white"
-                                : "text-[#666] hover:text-[#888]"
-                            }`}
-                          >
-                            {fmt === "carousel" ? "Carousels" : fmt.charAt(0).toUpperCase() + fmt.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-[#555] mt-3">Hide YouTube Shorts, Instagram Reels, or Substack Notes from the feed.</p>
-                </div>
-
-                {/* LANGUAGES */}
-                <div>
-                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Languages</p>
-                  <div className="flex flex-wrap gap-2">
-                    {LANGUAGES.map((lang) => (
-                      <button
-                        key={lang.id}
-                        onClick={() => setSelectedLanguage(lang.id)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                          selectedLanguage === lang.id
-                            ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
-                            : "border-[#2a2a2a] text-[#666] hover:border-[#3a3a3a] hover:text-[#888]"
-                        }`}
-                      >
-                        {lang.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between mt-2">
-                    <span className="text-[11px] text-[#555]">1 selected. Posts in other languages are hidden.</span>
-                    <button className="text-[11px] text-[#888] hover:text-white ml-2 whitespace-nowrap">Show all</button>
-                  </div>
-                </div>
-
-                {/* FOLLOWERS */}
-                <div>
-                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Followers</p>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {FOLLOWER_RANGES.map((range) => (
-                      <button
-                        key={range.id}
-                        onClick={() => setSelectedFollowers(range.id)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                          selectedFollowers === range.id
-                            ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
-                            : "border-[#2a2a2a] text-[#666] hover:border-[#3a3a3a] hover:text-[#888]"
-                        }`}
-                      >
-                        {range.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] text-[#666] uppercase mb-1 block">Min</label>
-                      <input
-                        type="text"
-                        value={followerMin}
-                        onChange={(e) => setFollowerMin(e.target.value)}
-                        className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#3a3a3a]"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-[#666] uppercase mb-1 block">Max</label>
-                      <input
-                        type="text"
-                        value={followerMax}
-                        onChange={(e) => setFollowerMax(e.target.value)}
-                        className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#3a3a3a]"
-                      />
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-[#555] mt-2">Tip: type values like 20k, 1m, or leave blank for no bound.</p>
-                </div>
-
-                {/* MIN OUTLIER SCORE */}
-                <div>
-                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Min Outlier Score</p>
-                  <div className="space-y-1">
-                    {OUTLIER_RANGES.map((range) => (
-                      <button
-                        key={range.id}
-                        onClick={() => setSelectedOutlier(range.id)}
-                        className="w-full flex items-center justify-between px-2 py-2.5 rounded-lg hover:bg-[#1e1e1e] transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                          <span className="text-sm text-white">{range.label}</span>
-                        </div>
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                          selectedOutlier === range.id
-                            ? "border-green-500 bg-green-500"
-                            : "border-[#3a3a3a]"
-                        }`}>
-                          {selectedOutlier === range.id && (
-                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* POSTED WITHIN */}
-                <div>
-                  <p className="text-[11px] text-[#666] uppercase tracking-wider font-semibold mb-3">Posted Within</p>
-                  <div className="space-y-1">
-                    {TIME_PERIODS.map((period) => (
-                      <button
-                        key={period.id}
-                        onClick={() => setSelectedTimePeriod(period.id)}
-                        className="w-full flex items-center justify-between px-2 py-2.5 rounded-lg hover:bg-[#1e1e1e] transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <svg className="w-4 h-4 text-[#888]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <span className="text-sm text-white">{period.label}</span>
-                        </div>
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                          selectedTimePeriod === period.id
-                            ? "border-green-500 bg-green-500"
-                            : "border-[#3a3a3a]"
-                        }`}>
-                          {selectedTimePeriod === period.id && (
-                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <FilterDropdown
+              filterRef={filterRef}
+              selectedPlatforms={selectedPlatforms}
+              setSelectedPlatforms={setSelectedPlatforms}
+              togglePlatform={togglePlatform}
+              selectedFormat={selectedFormat}
+              setSelectedFormat={setSelectedFormat}
+              selectedLanguage={selectedLanguage}
+              setSelectedLanguage={setSelectedLanguage}
+              selectedFollowers={selectedFollowers}
+              setSelectedFollowers={setSelectedFollowers}
+              followerMin={followerMin}
+              setFollowerMin={setFollowerMin}
+              followerMax={followerMax}
+              setFollowerMax={setFollowerMax}
+              selectedOutlier={selectedOutlier}
+              setSelectedOutlier={setSelectedOutlier}
+              selectedTimePeriod={selectedTimePeriod}
+              setSelectedTimePeriod={setSelectedTimePeriod}
+            />
           )}
         </div>
 
@@ -1743,7 +831,7 @@ function DiscoverPageContent() {
               <button
                 key={tab.id}
                 onClick={() => setResearchTab(tab.id)}
-                className={`text-lg font-medium pb-1 border-b-2 transition-colors ${
+                className={`text-lg font-medium pb-1 border-b-2 transition-colors cursor-pointer ${
                   researchTab === tab.id
                     ? "text-white border-white"
                     : "text-[#666] border-transparent hover:text-[#888]"
@@ -1756,110 +844,52 @@ function DiscoverPageContent() {
 
           {/* Category Pills - only show on Discover */}
           {researchTab === "discover" && (
-            <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
-              {allCategories.map((category) => (
-                <button
-                  key={category}
-                  onClick={() => setSelectedCategory(category)}
-                  onMouseEnter={() => setHoveredCategory(category)}
-                  onMouseLeave={() => setHoveredCategory(null)}
-                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm border whitespace-nowrap transition-colors ${
-                    selectedCategory === category
-                      ? "bg-[#2a2a2a] border-[#3a3a3a] text-white"
-                      : "border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a] hover:text-white"
-                  }`}
-                >
-                  {category === "All" ? (
-                    <>
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                      </svg>
-                      All
-                    </>
-                  ) : (
-                    <>
-                      {category}
-                      {hoveredCategory === category && (
-                        <span
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setActiveCategories((prev) => prev.filter((c) => c !== category));
-                            setCustomCategories((prev) => prev.filter((c) => c !== category));
-                            if (selectedCategory === category) {
-                              setSelectedCategory("All");
-                            }
-                          }}
-                          className="ml-1 flex items-center justify-center text-[#555] hover:text-red-400 transition-colors"
-                          title="Remove category"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </span>
-                      )}
-                    </>
-                  )}
-                </button>
-              ))}
-              {/* Add Category Button */}
-              {showAddCategory ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleAddCategory();
-                      if (e.key === "Escape") {
-                        setShowAddCategory(false);
-                        setNewCategory("");
-                      }
-                    }}
-                    placeholder="New category..."
-                    autoFocus
-                    className="px-3 py-1.5 rounded-full text-sm bg-[#1a1a1a] border border-[#3a3a3a] text-white placeholder-[#666] focus:outline-none focus:border-[#4a4a4a] w-32"
-                  />
-                  <button
-                    onClick={handleAddCategory}
-                    className="p-1.5 rounded-full bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowAddCategory(false);
-                      setNewCategory("");
-                    }}
-                    className="p-1.5 rounded-full bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowAddCategory(true)}
-                  className="px-4 py-1.5 rounded-full text-sm border border-dashed border-[#3a3a3a] text-[#888] hover:text-white hover:border-[#4a4a4a] transition-colors flex items-center gap-1.5"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add
-                </button>
-              )}
-            </div>
+            <CategoryPills
+              categories={allCategories}
+              selectedCategory={selectedCategory}
+              onSelect={setSelectedCategory}
+              hoveredCategory={hoveredCategory}
+              onHover={setHoveredCategory}
+              onRemove={(category) => {
+                setActiveCategories((prev) => prev.filter((c) => c !== category));
+                setCustomCategories((prev) => prev.filter((c) => c !== category));
+                if (selectedCategory === category) {
+                  setSelectedCategory("All");
+                }
+              }}
+              showAdd={showAddCategory}
+              onShowAdd={() => setShowAddCategory(true)}
+              onCancelAdd={() => {
+                setShowAddCategory(false);
+                setNewCategory("");
+              }}
+              newCategory={newCategory}
+              onNewCategoryChange={setNewCategory}
+              onAddCategory={handleAddCategory}
+            />
           )}
 
           {/* ===== DISCOVER TAB ===== */}
           {researchTab === "discover" && (
             <>
               <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-md p-0.5">
+                  {(["all", "videos", "articles"] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`px-3 py-1 text-xs rounded transition-colors capitalize cursor-pointer ${
+                        activeTab === tab ? "bg-[#2a2a2a] text-white" : "text-[#888] hover:text-white"
+                      }`}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as SortOption)}
-                  className="text-sm border border-[#2a2a2a] rounded-md px-3 py-1.5 bg-[#1a1a1a] text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="text-sm border border-[#2a2a2a] rounded-md px-3 py-1.5 bg-[#1a1a1a] text-white focus:outline-none focus:border-[#3a3a3a] cursor-pointer transition-colors"
                 >
                   <option value="top">Best Performance</option>
                   <option value="discovery">Discovery Score</option>
@@ -1874,8 +904,8 @@ function DiscoverPageContent() {
                 <div className="mb-6">
                   <QuotaExceededError
                     retryAfter={quotaError.retryAfter}
-                    onRetry={handleRetry}
-                    hasCachedResults={fromCache && (unifiedItemsMemo.length > 0 || videos.length > 0 || contentItems.length > 0)}
+                    onRetry={onRetry}
+                    hasCachedResults={fromCache && (unifiedItems.length > 0 || videos.length > 0 || contentItems.length > 0)}
                   />
                 </div>
               )}
@@ -1891,7 +921,7 @@ function DiscoverPageContent() {
                     </svg>
                     <p className="text-base font-medium text-white mb-2">Something went wrong</p>
                     <p className="text-sm text-[#888] mb-4">{error}</p>
-                    <Button variant="outline" size="sm" onClick={handleRetry} className="border-[#2a2a2a] text-white hover:bg-[#1a1a1a]">
+                    <Button variant="outline" size="sm" onClick={onRetry} className="bg-[#1a1a1a] border-[#2a2a2a] text-white hover:bg-[#252525] hover:border-[#3a3a3a]">
                       Try Again
                     </Button>
                   </div>
@@ -1899,7 +929,7 @@ function DiscoverPageContent() {
               )}
 
               {/* Loading */}
-              {(isLoadingVideos || isLoadingContent) && videos.length === 0 && contentItems.length === 0 && (
+              {isFeedLoading && videos.length === 0 && contentItems.length === 0 && creatorVideos.length === 0 && (
                 <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
                   {Array.from({ length: 8 }).map((_, i) => (
                     <div key={i} className="break-inside-avoid mb-4">
@@ -1917,244 +947,95 @@ function DiscoverPageContent() {
 
               {/* Masonry Content Grid */}
               {activeTab === "all" && (
-                <>
-                  <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
-                    {unifiedItemsMemo.slice(0, displayCount).map((item) =>
-                      item.contentType === "video" ? (
-                        <div key={item.id} className="break-inside-avoid mb-4">
-                          <VideoCard key={item.id} video={item} onSave={openBoardPickerForVideo} />
-                        </div>
-                      ) : (
-                        <div key={item.id} className="break-inside-avoid mb-4">
-                          <ContentCard key={item.id} item={item} onSave={openBoardPickerForContent} />
-                        </div>
-                      )
-                    )}
-                  </div>
-                  {displayCount < unifiedItemsMemo.length && (
-                    <div ref={loadMoreRef} className="flex justify-center py-8">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/40" />
-                    </div>
-                  )}
-                </>
+                <DiscoverContentGrid
+                  mixed={unifiedItems}
+                  displayCount={displayCount}
+                  loadMoreRef={loadMoreRef}
+                  onVideoSave={saveVideo}
+                  onContentSave={saveContent}
+                  onChatOpen={(chatItem) => { setChatSessionId(undefined); setChatItem(chatItem); }}
+                />
               )}
 
               {activeTab === "videos" && (
-                <>
-                  <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
-                    {sortedVideos.slice(0, displayCount).map((video) => (
-                      <div key={video.id} className="break-inside-avoid mb-4">
-                        <VideoCard video={video} onSave={openBoardPickerForVideo} />
-                      </div>
-                    ))}
-                  </div>
-                  {displayCount < sortedVideos.length && (
-                    <div ref={loadMoreRef} className="flex justify-center py-8">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/40" />
-                    </div>
-                  )}
-                </>
+                <DiscoverContentGrid
+                  videos={sortedVideos}
+                  displayCount={displayCount}
+                  loadMoreRef={loadMoreRef}
+                  onVideoSave={saveVideo}
+                  onContentSave={saveContent}
+                  onChatOpen={(chatItem) => { setChatSessionId(undefined); setChatItem(chatItem); }}
+                />
               )}
 
               {activeTab === "articles" && (
-                <>
-                  <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
-                    {sortedArticles.slice(0, displayCount).map((item) => (
-                      <div key={item.id} className="break-inside-avoid mb-4">
-                        <ContentCard item={item} onSave={openBoardPickerForContent} />
-                      </div>
-                    ))}
-                  </div>
-                  {displayCount < sortedArticles.length && (
-                    <div ref={loadMoreRef} className="flex justify-center py-8">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/40" />
-                    </div>
-                  )}
-                </>
+                <DiscoverContentGrid
+                  articles={sortedArticles}
+                  displayCount={displayCount}
+                  loadMoreRef={loadMoreRef}
+                  onVideoSave={saveVideo}
+                  onContentSave={saveContent}
+                  onChatOpen={(chatItem) => { setChatSessionId(undefined); setChatItem(chatItem); }}
+                />
               )}
 
               {/* Empty */}
-              {!isLoadingVideos && !isLoadingContent && videos.length === 0 && contentItems.length === 0 && !error && !quotaError && (
-                <div className="text-center py-12">
-                  <p className="text-[#888]">{user ? "Select a category or search to discover content" : "Sign in to discover content"}</p>
+              {!isFeedLoading && videos.length === 0 && contentItems.length === 0 && creatorVideos.length === 0 && !error && !quotaError && (
+                <div className="rounded-lg border border-dashed border-[#2a2a2a] bg-[#0a0a0a]/50 p-8">
+                  <div className="flex flex-col items-center text-center">
+                    <svg className="text-[#666] mb-4" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" x2="16.65" y1="21" y2="16.65" />
+                    </svg>
+                    <p className="text-base font-medium text-white mb-2">Nothing to show yet</p>
+                    <p className="text-sm text-[#888] mb-4">
+                      {user ? "Select a category, adjust filters, or search to discover content." : "Sign in to discover content."}
+                    </p>
+                    {user && (
+                      <Button variant="outline" size="sm" onClick={onRetry} className="bg-[#1a1a1a] border-[#2a2a2a] text-white hover:bg-[#252525] hover:border-[#3a3a3a]">
+                        Load content
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
             </>
           )}
 
           {/* ===== CREATORS TAB ===== */}
-          {researchTab === "creators" && (
-            <div className="space-y-6">
-              {/* Add Creator */}
-              <div className="flex gap-2 max-w-xl">
-                <input
-                  type="text"
-                  placeholder="Paste YouTube channel URL..."
-                  value={creatorUrl}
-                  onChange={(e) => setCreatorUrl(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleTrackCreator();
-                  }}
-                  className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-sm text-white placeholder-[#666] focus:outline-none focus:border-[#3a3a3a]"
-                />
-                <Button
-                  onClick={handleTrackCreator}
-                  disabled={isTrackingCreator || !creatorUrl.trim()}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  {isTrackingCreator ? "Tracking..." : "Track"}
-                </Button>
-              </div>
-
-              {/* Loading */}
-              {isLoadingCreators && (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
-                </div>
-              )}
-
-              {/* Creators Grid */}
-              {!isLoadingCreators && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {trackedCreators.map((creator) => (
-                    <button
-                      key={creator.id}
-                      onClick={() => router.push(`/creators?channelId=${creator.channelId}`)}
-                      className="text-left bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 hover:border-[#3a3a3a] transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        {creator.thumbnail ? (
-                          <img
-                            src={creator.thumbnail}
-                            alt={creator.channelTitle}
-                            className="w-12 h-12 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-full bg-[#2a2a2a] flex items-center justify-center">
-                            <svg className="w-6 h-6 text-[#666]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-white truncate">{creator.channelTitle}</p>
-                          <p className="text-xs text-[#888]">
-                            {creator.subscriberCount?.toLocaleString()} subscribers
-                          </p>
-                          <p className="text-xs text-[#666]">
-                            {creator.videoCount?.toLocaleString()} videos
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Empty */}
-              {!isLoadingCreators && trackedCreators.length === 0 && (
-                <div className="text-center py-12">
-                  <svg className="w-12 h-12 mx-auto mb-4 text-[#3a3a3a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  <p className="text-[#888] text-sm">No creators tracked yet.</p>
-                  <p className="text-[#666] text-xs mt-1">Paste a YouTube channel URL above to start tracking.</p>
-                </div>
-              )}
-            </div>
-          )}
+          {researchTab === "creators" && <CreatorsTab user={user} />}
 
           {/* ===== LISTS TAB ===== */}
-          {researchTab === "lists" && (
-            <div className="text-center py-12">
-              <p className="text-[#888]">Lists coming soon</p>
-            </div>
-          )}
+          {researchTab === "lists" && <CreatorListsTab onChatOpen={(video, prompt) => { setChatSessionId(undefined); setChatItem({ item: video, type: "video", initialPrompt: prompt }); }} />}
 
           {/* ===== CHANNEL TAB ===== */}
           {researchTab === "channel" && (
-            <ChannelTabContent />
+            <div className="mt-2">
+              <ChannelAnalytics />
+            </div>
           )}
         </div>
         </>
         )}
       </div>
 
-      <BoardPicker
-        isOpen={boardPickerOpen}
-        onClose={() => { setBoardPickerOpen(false); setPendingSaveVideo(null); setPendingSaveContent(null); }}
-        onSave={(boardId) => {
-          if (pendingSaveVideo) {
-            handleSaveToBoard(boardId);
-          } else if (pendingSaveContent) {
-            handleSaveContentToBoard(boardId);
-          }
-        }}
-        itemTitle={pendingSaveVideo?.title || pendingSaveContent?.title || ""}
-      />
+        {/* Unified Chat Panel — inline split (right pane) */}
+        {(!!chatSessionId || !!chatItem) && (
+        <div className="w-[550px] shrink-0 h-full">
+          <ContentChatPanel
+            isOpen={true}
+            onClose={() => { setChatSessionId(undefined); setChatItem(null); }}
+            sessionId={chatSessionId === "new" ? undefined : chatSessionId}
+            userId={user?.uid}
+            item={chatItem?.item}
+            itemType={chatItem?.type}
+            initialPrompt={chatItem?.initialPrompt}
+            inline={true}
+          />
+        </div>
+        )}
+      </div>
     </div>
-  );
-}
-
-function SidebarItem({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: string;
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  const iconMap: Record<string, React.ReactNode> = {
-    home: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-      </svg>
-    ),
-    research: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-      </svg>
-    ),
-    menu: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
-      </svg>
-    ),
-    chart: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
-    ),
-    board: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-      </svg>
-    ),
-    academy: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 19.477 5.754 19 7.5 19s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 19.477 18.247 19 16.5 19c-1.746 0-3.332.477-4.5 1.253" />
-      </svg>
-    ),
-    help: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
-  };
-
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-        active ? "bg-[#1a1a1a] text-white" : "text-[#888] hover:bg-[#1a1a1a] hover:text-white"
-      }`}
-    >
-      {iconMap[icon] || iconMap.home}
-      <span className="truncate">{label}</span>
-    </button>
   );
 }
 
@@ -2171,210 +1052,5 @@ export default function DiscoverPage() {
         <DiscoverPageContent />
       </Suspense>
     </ErrorBoundary>
-  );
-}
-
-// ---- Inline Channel Tab Component ----
-
-function ChannelTabContent() {
-  const { isAuthenticated, user } = useAuth();
-  const { channel: connectedChannel, isConnecting, isConnected, connectChannel, disconnectChannel, refreshChannel } = useConnectChannel();
-  const [isLoading, setIsLoading] = useState(false);
-  const [videos, setVideos] = useState<{ id: string; title: string; thumbnail: string; channelTitle: string; channelId: string; description: string; publishedAt: string; viewCount: number; likeCount: number; commentCount: number; duration: string; tags: string[] }[]>([]);
-  const [stats, setStats] = useState<{ totalVideos: number; avgViews: number; engagementRate: number; avgPerformance: number } | null>(null);
-
-  useEffect(() => {
-    if (isConnected && connectedChannel?.channelId) {
-      loadChannelVideos();
-    }
-  }, [isConnected, connectedChannel]);
-
-  async function loadChannelVideos() {
-    if (!connectedChannel?.channelId) return;
-    setIsLoading(true);
-    try {
-      const response = await fetch(`/api/youtube/channel-videos?channelId=${connectedChannel.channelId}`);
-      const result = await response.json();
-      if (result.success && result.data) {
-        // Transform API response to flat structure
-        const transformedVideos = (result.data.videos || []).map((v: Record<string, any>) => ({
-          id: v.id,
-          title: v.snippet?.title || "",
-          thumbnail: v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.default?.url || "",
-          channelTitle: v.snippet?.channelTitle || "",
-          channelId: v.snippet?.channelId || "",
-          description: v.snippet?.description || "",
-          publishedAt: v.snippet?.publishedAt || "",
-          viewCount: parseInt(v.statistics?.viewCount || "0", 10),
-          likeCount: parseInt(v.statistics?.likeCount || "0", 10),
-          commentCount: parseInt(v.statistics?.commentCount || "0", 10),
-          duration: v.contentDetails?.duration || "",
-          tags: v.snippet?.tags || [],
-        }));
-        setVideos(transformedVideos);
-
-        // Calculate stats
-        const totalVideos = transformedVideos.length;
-        const totalViews = transformedVideos.reduce((sum: number, v: { viewCount: number }) => sum + (v.viewCount || 0), 0);
-        const avgViews = totalVideos > 0 ? Math.round(totalViews / totalVideos) : 0;
-        const totalLikes = transformedVideos.reduce((sum: number, v: { likeCount: number }) => sum + (v.likeCount || 0), 0);
-        const totalComments = transformedVideos.reduce((sum: number, v: { commentCount: number }) => sum + (v.commentCount || 0), 0);
-        const engagementRate = totalViews > 0 ? Math.round(((totalLikes + totalComments) / totalViews) * 1000) / 10 : 0;
-
-        setStats({
-          totalVideos,
-          avgViews,
-          engagementRate,
-          avgPerformance: 0,
-        });
-      }
-    } catch (error) {
-      console.error("Failed to load channel videos:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-8 text-center">
-        <p className="text-white text-lg mb-2">Sign in to connect your channel</p>
-        <p className="text-[#888] text-sm mb-6">Link your YouTube channel to get personalized analytics</p>
-        <button
-          onClick={() => window.location.href = "/auth/login"}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          Sign In
-        </button>
-      </div>
-    );
-  }
-
-  if (!isConnected) {
-    return (
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-8 text-center">
-        <div className="w-16 h-16 mx-auto mb-4 bg-[#2a2a2a] rounded-full flex items-center justify-center">
-          <svg className="w-8 h-8 text-[#666]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-        </div>
-        <h3 className="text-white text-lg font-medium mb-2">Connect Your YouTube Channel</h3>
-        <p className="text-[#888] text-sm mb-6 max-w-md mx-auto">
-          Link your YouTube channel to get personalized analytics, performance insights, and optimization tips.
-        </p>
-        <button
-          onClick={connectChannel}
-          disabled={isConnecting}
-          className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          {isConnecting ? "Connecting..." : "Connect Channel"}
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Connected Channel Header */}
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {connectedChannel?.thumbnail ? (
-              <img
-                src={connectedChannel.thumbnail}
-                alt={connectedChannel.title}
-                className="w-12 h-12 rounded-full object-cover"
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-[#2a2a2a] flex items-center justify-center">
-                <span className="text-xl">▶️</span>
-              </div>
-            )}
-            <div>
-              <h3 className="text-white font-medium">{connectedChannel?.title}</h3>
-              <p className="text-[#888] text-sm">
-                {connectedChannel?.subscriberCount?.toLocaleString()} subscribers · {connectedChannel?.videoCount?.toLocaleString()} videos
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { refreshChannel(); loadChannelVideos(); }}
-              disabled={isLoading}
-              className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors"
-            >
-              {isLoading ? "Refreshing..." : "Refresh"}
-            </button>
-            <button
-              onClick={disconnectChannel}
-              className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 transition-colors"
-            >
-              Disconnect
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-white">{stats.totalVideos}</p>
-            <p className="text-xs text-[#888]">Videos</p>
-          </div>
-          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-white">{stats.avgViews?.toLocaleString()}</p>
-            <p className="text-xs text-[#888]">Avg Views</p>
-          </div>
-          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-white">{stats.engagementRate}%</p>
-            <p className="text-xs text-[#888]">Engagement</p>
-          </div>
-          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-white">{stats.avgPerformance}/100</p>
-            <p className="text-xs text-[#888]">Avg Score</p>
-          </div>
-        </div>
-      )}
-
-      {/* Videos Grid */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
-        </div>
-      ) : videos.length > 0 ? (
-        <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
-          {videos.map((video: any) => (
-            <div key={video.id} className="break-inside-avoid mb-4">
-              <div className="bg-[#101010] rounded-xl overflow-hidden border border-[#2a2a2a] hover:border-[#3a3a3a] transition-all duration-200">
-                <div className="relative w-full">
-                  <img
-                    src={video.thumbnail}
-                    alt={video.title}
-                    className="w-full h-auto object-cover"
-                  />
-                  {video.duration && (
-                    <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-1.5 py-0.5 rounded">
-                      {video.duration}
-                    </div>
-                  )}
-                </div>
-                <div className="p-3">
-                  <h3 className="text-sm font-medium text-white leading-snug line-clamp-2 mb-2">{video.title}</h3>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-[#888]">{video.viewCount?.toLocaleString()} views</span>
-                    <span className="text-xs text-[#666]">{video.outlierScore}x outlier</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <p className="text-[#888]">No videos found</p>
-        </div>
-      )}
-    </div>
   );
 }

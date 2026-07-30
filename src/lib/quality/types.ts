@@ -109,6 +109,8 @@ export interface ScoringContext {
 
 export type PlatformType = "youtube" | "x" | "instagram" | "facebook";
 
+export const PLATFORM_TYPES: readonly PlatformType[] = ["youtube", "x", "instagram", "facebook"] as const;
+
 export interface PlatformConnection {
   platform: PlatformType;
   connected: boolean;

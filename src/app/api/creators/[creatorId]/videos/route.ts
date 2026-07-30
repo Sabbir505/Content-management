@@ -1,86 +1,135 @@
-import { NextResponse } from "next/server";
-import { getYouTubeClient } from "@/lib/youtube-client";
+import { NextRequest, NextResponse } from "next/server";
+import { YOUTUBE_API_KEY, fetchYouTubeApi, resolveChannelId } from "@/lib/youtube-api";
+import { guardApiKey } from "@/lib/api-helpers";
 import { calculateOutlierScore, estimateHookType, estimateStructure } from "@/lib/outlier";
-import { calculateVideoDiscoveryScore } from "@/lib/discovery-score";
 import type { CreatorVideo } from "@/types/creator";
 
-export async function GET(request: Request) {
+interface YouTubeChannelItem {
+  id: string;
+  snippet: { title: string; thumbnails: { medium?: { url: string }; default?: { url: string } } };
+  contentDetails?: { relatedPlaylists?: { uploads?: string } };
+  statistics?: { viewCount?: string; subscriberCount?: string; videoCount?: string };
+}
+
+interface YouTubePlaylistItem {
+  id: string;
+  snippet: {
+    title: string;
+    channelId: string;
+    channelTitle: string;
+    description: string;
+    publishedAt: string;
+    thumbnails: { medium?: { url: string }; high?: { url: string }; default?: { url: string } };
+    resourceId?: { videoId: string };
+  };
+}
+
+interface YouTubeVideoItem {
+  id: string;
+  snippet?: { tags?: string[] };
+  statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
+  contentDetails?: { duration?: string };
+}
+
+export async function GET(request: NextRequest, { params }: { params: Promise<{ creatorId: string }> }) {
   try {
     const { searchParams } = new URL(request.url);
-    const channelId = searchParams.get("channelId");
+    const resolvedParams = await params;
+    const rawChannelId = resolvedParams.creatorId || searchParams.get("channelId");
 
+    if (!rawChannelId) {
+      return NextResponse.json({ success: false, error: "channelId parameter is required" }, { status: 400 });
+    }
+    const guard = await guardApiKey(YOUTUBE_API_KEY, "YOUTUBE_API_KEY");
+    if (guard) return guard;
+
+    const channelId = await resolveChannelId(rawChannelId);
     if (!channelId) {
-      return NextResponse.json({ success: false, error: "Missing channelId" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Could not find channel" }, { status: 404 });
     }
 
-    const yt = await getYouTubeClient();
-    const channel = await yt.getChannel(channelId);
-    const metadata = (channel as any).metadata;
+    const channelData = await fetchYouTubeApi<YouTubeChannelItem>(
+      `channels?part=snippet,contentDetails,statistics&id=${channelId}`
+    );
+    if (!channelData.items || channelData.items.length === 0) {
+      return NextResponse.json({ success: false, error: "Channel not found" }, { status: 404 });
+    }
 
-    // Get channel videos
-    const videos = await (channel as any).getVideos();
+    const channel = channelData.items[0];
+    const uploadsPlaylistId = channel.contentDetails?.relatedPlaylists?.uploads;
+    if (!uploadsPlaylistId) {
+      return NextResponse.json({ success: false, error: "No uploads playlist found" }, { status: 404 });
+    }
 
-    const videoPromises = videos.videos?.slice(0, 20).map(async (video: any) => {
-      const viewCount = parseInt(video.view_count?.text?.replace(/[^\d]/g, "") || "0", 10);
-      const durationText = video.duration?.text || "0:00";
-      const durationSeconds = parseDuration(durationText);
-      const publishedAt = video.published?.text || "";
+    const playlistItems = await fetchYouTubeApi<YouTubePlaylistItem>(
+      `playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=50`
+    );
+    if (!playlistItems.items || playlistItems.items.length === 0) {
+      return NextResponse.json({ success: false, error: "No videos found" }, { status: 404 });
+    }
 
-      // Calculate outlier score
-      let channelAvgViews = viewCount * 0.1;
-      try {
-        const totalViews = parseInt(metadata.view_count?.toString() || "0", 10);
-        const totalVideos = parseInt(metadata.total_videos?.toString() || "0", 10);
-        if (totalVideos > 0 && totalViews > 0) {
-          channelAvgViews = totalViews / totalVideos;
-        }
-      } catch {
-        // Fallback
-      }
-      const outlierScore = calculateOutlierScore(viewCount, channelAvgViews);
+    const videoIds = playlistItems.items
+      .map((item) => item.snippet.resourceId?.videoId)
+      .filter((id): id is string => !!id);
 
-      const videoData: CreatorVideo = {
-        id: video.id,
-        creatorId: channelId,
-        title: video.title?.text || "",
-        thumbnail: video.thumbnails?.[0]?.url || "",
-        publishedAt: new Date().toISOString(), // Fallback since published might not be available
-        viewCount,
-        duration: durationText,
-        outlierScore,
-        hookType: estimateHookType(video.title?.text || ""),
-        estimatedStructure: estimateStructure(video.title?.text || ""),
-      };
+    const videoDetails: YouTubeVideoItem[] = [];
+    for (let i = 0; i < videoIds.length; i += 50) {
+      const batch = videoIds.slice(i, i + 50);
+      const details = await fetchYouTubeApi<YouTubeVideoItem>(
+        `videos?part=statistics,contentDetails&id=${batch.join(",")}`
+      );
+      if (details.items) videoDetails.push(...details.items);
+    }
 
-      return videoData;
-    }) || [];
+    const detailsById = new Map(videoDetails.map((item) => [item.id, item]));
 
-    const formattedVideos = await Promise.all(videoPromises);
+    const totalViews = parseInt(channel.statistics?.viewCount || "0", 10);
+    const totalVideos = parseInt(channel.statistics?.videoCount || "0", 10);
+    const channelAvgViews = totalVideos > 0 && totalViews > 0 ? totalViews / totalVideos : 0;
+
+    const videos: CreatorVideo[] = playlistItems.items
+      .map((item) => {
+        const videoId = item.snippet.resourceId?.videoId;
+        if (!videoId) return null;
+        const details = detailsById.get(videoId);
+        const viewCount = parseInt(details?.statistics?.viewCount || "0", 10);
+        const outlierScore = channelAvgViews > 0 ? calculateOutlierScore(viewCount, channelAvgViews) : 0;
+
+        const video: CreatorVideo = {
+          id: videoId,
+          creatorId: channelId,
+          title: item.snippet.title,
+          thumbnail: item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || "",
+          publishedAt: item.snippet.publishedAt,
+          viewCount,
+          likeCount: parseInt(details?.statistics?.likeCount || "0", 10),
+          duration: details?.contentDetails?.duration || "PT0S",
+          outlierScore,
+          hookType: estimateHookType(item.snippet.title),
+          estimatedStructure: estimateStructure(item.snippet.title),
+        };
+        return video;
+      })
+      .filter((v): v is CreatorVideo => v !== null);
 
     return NextResponse.json({
       success: true,
       data: {
-        videos: formattedVideos,
+        videos,
         channel: {
           id: channelId,
-          title: metadata.title,
-          thumbnail: metadata.avatar?.[0]?.url || "",
-          subscriberCount: parseInt(metadata.subscriber_count?.toString() || "0", 10),
-          videoCount: parseInt(metadata.total_videos?.toString() || "0", 10),
+          title: channel.snippet.title,
+          thumbnail: channel.snippet.thumbnails.medium?.url || channel.snippet.thumbnails.default?.url || "",
+          subscriberCount: parseInt(channel.statistics?.subscriberCount || "0", 10),
+          videoCount: totalVideos,
         },
       },
     });
   } catch (error) {
     console.error("Failed to fetch creator videos:", error);
-    return NextResponse.json({ success: false, error: "Failed to fetch creator videos" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Failed to fetch creator videos" },
+      { status: 500 }
+    );
   }
-}
-
-function parseDuration(duration: string): number {
-  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!match) return 0;
-  const hours = parseInt(match[1] || "0");
-  const minutes = parseInt(match[2] || "0");
-  const seconds = parseInt(match[3] || "0");
-  return hours * 3600 + minutes * 60 + seconds;
 }

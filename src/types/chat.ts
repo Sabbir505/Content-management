@@ -15,11 +15,18 @@ export interface ChatAttachment {
   text?: string;
 }
 
+export interface HeadlineVariation {
+  label: string;
+  headline: string;
+}
+
 export interface ChatArtifact {
-  type: "script" | "social_posts" | "analysis";
+  type: "script" | "social_posts" | "analysis" | "headline_variations";
   content: string;
   platform?: "x" | "instagram" | "facebook";
   scoredOutput?: unknown;
+  headlineVariations?: HeadlineVariation[];
+  sourceTitle?: string;
 }
 
 export interface ChatMessage {

@@ -2,7 +2,9 @@ import { z } from "zod";
 import { NextRequest, NextResponse } from "next/server";
 import { evaluateAndDeliver } from "@/lib/quality/regeneration";
 import { enrichGenerationContext } from "@/lib/quality/grounding/grounding-pipeline";
-import type { ScoredOutput } from "@/lib/quality/types";
+import { callLLM, parseJsonResponse, type ApiMessage, type VoiceProfileInput } from "@/lib/generation/llm";
+import { parseBody, guardApiKey } from "@/lib/api-helpers";
+import { voiceProfileSchema, generationMetadataSchema, buildRegenerationContext } from "@/lib/generation/schemas";
 
 const VALID_TONES = [
   "educational",
@@ -26,122 +28,23 @@ const scriptSchema = z.object({
   videoDescription: z.string().optional(),
   tone: z.enum(VALID_TONES).optional(),
   userVoice: z.string().optional(),
-  voiceProfile: z.object({
-    hookStyle: z.string(),
-    sentenceLength: z.string(),
-    tone: z.string(),
-    vocabulary: z.string(),
-    humorLevel: z.string(),
-    ctaPattern: z.string(),
-    sampleSentences: z.array(z.string()).optional(),
-  }).optional(),
-  topic: z.string().optional(),
-  niche: z.string().optional(),
+  voiceProfile: voiceProfileSchema.optional(),
   format: z.string().optional(),
   targetDuration: z.number().optional(),
   structure: z.string().optional(),
   hookType: z.string().optional(),
-});
+}).merge(generationMetadataSchema);
 
-const API_URL = process.env.KIMI_API_ENDPOINT || "https://ai2.18.show/v1/chat/completions";
-const API_KEY = process.env.KIMI_API_KEY;
-const MODEL = process.env.KIMI_MODEL || "DeepSeek-V4-Pro";
-
-interface ApiMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
-interface ApiResponse {
-  choices: {
-    message: {
-      content: string;
-    };
-  }[];
-}
-
-interface ScriptOutput {
+const fallbackScript = {
   script: {
-    title_suggestion: string;
-    total_word_count: number;
-    estimated_duration_minutes: number;
-    sections: {
-      label: string;
-      word_count: number;
-      content: string;
-    }[];
-    hook_type_used: string;
-    cta_used: string;
-  };
-}
-
-interface VoiceProfileInput {
-  hookStyle: string;
-  sentenceLength: string;
-  tone: string;
-  vocabulary: string;
-  humorLevel: string;
-  ctaPattern: string;
-  sampleSentences?: string[];
-}
-
-async function callLLM(messages: ApiMessage[], temperature: number = 0.7): Promise<string> {
-  const maxRetries = 2;
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages,
-          temperature,
-          max_tokens: 2500,
-        }),
-        signal: AbortSignal.timeout(45000),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${response.status} ${errorText}`);
-      }
-
-      const data: ApiResponse = await response.json();
-      return data.choices[0]?.message?.content || "";
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      if (attempt < maxRetries) {
-        // Wait before retrying (exponential backoff)
-        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
-      }
-    }
-  }
-
-  throw lastError || new Error("LLM call failed after retries");
-}
-
-function parseScriptResponse(content: string): ScriptOutput {
-  const cleanJson = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  try {
-    return JSON.parse(cleanJson);
-  } catch {
-    return {
-      script: {
-        title_suggestion: "",
-        total_word_count: 0,
-        estimated_duration_minutes: 0,
-        sections: [{ label: "CONTENT", word_count: 0, content: cleanJson || content }],
-        hook_type_used: "",
-        cta_used: "",
-      },
-    };
-  }
-}
+    title_suggestion: "",
+    total_word_count: 0,
+    estimated_duration_minutes: 0,
+    sections: [{ label: "CONTENT", word_count: 0, content: "" }],
+    hook_type_used: "",
+    cta_used: "",
+  },
+};
 
 function buildSystemPrompt(): string {
   return `You are TubeForge's expert video scriptwriter. You write YouTube video scripts that are engaging, well-structured, and feel completely natural — never like AI.
@@ -321,15 +224,8 @@ Respond using this exact JSON schema:
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const parsed = scriptSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, error: parsed.error.issues.map((e: { message: string }) => e.message).join(", ") },
-        { status: 400 }
-      );
-    }
+    const validation = await parseBody(request, scriptSchema);
+    if (!validation.success) return validation.errorResponse;
 
     const {
       videoTitle,
@@ -338,12 +234,11 @@ export async function POST(request: NextRequest) {
       userVoice,
       voiceProfile: voiceProfileInput,
       topic,
-      niche,
       format,
       targetDuration,
       structure,
       hookType,
-    } = parsed.data;
+    } = validation.data;
 
     if (!videoTitle.trim()) {
       return NextResponse.json(
@@ -352,16 +247,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!API_KEY) {
-      console.error("KIMI_API_KEY is not set");
-      return NextResponse.json({ success: false, error: "API key not configured" }, { status: 500 });
-    }
+    const guard = await guardApiKey("KIMI_API_KEY");
+    if (guard) return guard;
 
     // Layer 1: Data Grounding
     const groundingContext = await enrichGenerationContext(
-      topic || videoTitle,
-      niche || "general",
-      "script"
+      topic || videoTitle
     );
 
     // Build enriched prompt
@@ -400,7 +291,7 @@ export async function POST(request: NextRequest) {
       { role: "user", content: userPrompt },
     ];
     const initialContent = await callLLM(initialMessages, 0.7);
-    const initialOutput = parseScriptResponse(initialContent);
+    const initialOutput = parseJsonResponse(initialContent, fallbackScript);
 
     // Score and auto-regenerate if needed
     const scoredOutput = await evaluateAndDeliver(
@@ -413,17 +304,7 @@ export async function POST(request: NextRequest) {
         format: (format as "long-form" | "shorts") || "long-form",
       },
       async (_prevOutput, issues, suggestions) => {
-        const regenerationContext = issues.length > 0
-          ? `REGENERATION CONTEXT
-The previous generation attempt had these issues:
-${issues.map((i) => `- ${i}`).join("\n")}
-
-Required improvements:
-${suggestions.map((s) => `- ${s}`).join("\n")}
-
----
-`
-          : "";
+        const regenerationContext = buildRegenerationContext(issues, suggestions);
 
         const messages: ApiMessage[] = [
           { role: "system", content: buildSystemPrompt() },
@@ -431,7 +312,7 @@ ${suggestions.map((s) => `- ${s}`).join("\n")}
         ];
 
         const content = await callLLM(messages, 0.6); // Drop temperature by 0.1 for regeneration
-        return parseScriptResponse(content);
+        return parseJsonResponse(content, fallbackScript);
       }
     );
 
@@ -439,6 +320,6 @@ ${suggestions.map((s) => `- ${s}`).join("\n")}
   } catch (error) {
     console.error("Script generation error:", error instanceof Error ? error.message : error);
     console.error("Stack:", error instanceof Error ? error.stack : "No stack");
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
   }
 }

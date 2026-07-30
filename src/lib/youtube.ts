@@ -1,33 +1,55 @@
 import { getYouTubeClient } from "./youtube-client";
-import { calculateOutlierScore, estimateHookType, estimateStructure } from "./outlier";
-import { proxyFetch } from "./proxy";
+import {
+  calculateOutlierScore,
+  estimateHookType,
+  estimateStructure,
+  calculateSubscriberWeightedOutlier,
+} from "./outlier";
 import * as memoryCache from "./quality/cache";
 import { calculateVideoDiscoveryScore } from "./discovery-score";
 import type { VideoWithOutlier } from "@/types/video";
 import type { YouTubeSearchResult, YouTubeSearchError } from "./quality/types";
+import { parseViewCount, parsePublishedDate } from "./youtube-parsers";
 
 const MEMORY_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+// Minimal shapes for youtubei.js responses whose exported types omit these fields
+interface YtVideoSearchResult {
+  id: string;
+  title?: { text: string };
+  author?: { id: string; name: string };
+  duration?: { text: string };
+  view_count?: { text: string };
+  published?: { text: string };
+  description_snippet?: { text: string };
+  thumbnails: { url: string }[];
+}
+
+interface YtChannelMetadata {
+  view_count?: number | string;
+  subscriber_count?: number | string;
+  total_videos?: number | string;
+  title: string;
+  description: string;
+  avatar?: { url: string }[];
+}
+
+interface YtBasicVideoInfo {
+  title: string;
+  channel_id: string;
+  author: string;
+  short_description: string;
+  publish_date?: string;
+  thumbnail?: { url: string }[];
+  tags?: string[];
+  duration?: number;
+  view_count?: number | string;
+}
 
 interface SearchFilters {
   niche: string;
   timeRange: "day" | "week" | "month" | "year";
   language: "any" | "en";
-}
-
-function getPublishedAfter(timeRange: string): Date | null {
-  const now = new Date();
-  switch (timeRange) {
-    case "day":
-      return new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    case "week":
-      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    case "month":
-      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    case "year":
-      return new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-    default:
-      return null;
-  }
 }
 
 function parseYouTubeDuration(durationText: string): number {
@@ -52,64 +74,18 @@ export function formatDuration(seconds: number): string {
   return `${minutes}:${secs.toString().padStart(2, "0")}`;
 }
 
-function parseViewCount(viewText: string): number {
-  if (!viewText) return 0;
-  const cleaned = viewText.replace(/[^\d]/g, "");
-  return parseInt(cleaned) || 0;
+export function extractVideoId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})/,
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
 }
 
-function parsePublishedDate(dateText: string): string {
-  const now = new Date();
-  const lower = dateText.toLowerCase().trim();
-
-  // Handle empty/undefined dates
-  if (!lower || lower === "") {
-    return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  }
-
-  // Handle "today" and "yesterday" specifically
-  if (lower === "today" || lower.includes("today")) {
-    return now.toISOString();
-  }
-  if (lower === "yesterday" || lower.includes("yesterday")) {
-    return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-  }
-
-  // Extract number from relative time strings like "2 years ago", "Streamed 3 days ago"
-  const numberMatch = lower.match(/(\d+)/);
-  const number = numberMatch ? parseInt(numberMatch[1], 10) : 1;
-
-  if (lower.includes("year")) {
-    return new Date(now.getTime() - number * 365 * 24 * 60 * 60 * 1000).toISOString();
-  }
-  if (lower.includes("month")) {
-    return new Date(now.getTime() - number * 30 * 24 * 60 * 60 * 1000).toISOString();
-  }
-  if (lower.includes("week")) {
-    return new Date(now.getTime() - number * 7 * 24 * 60 * 60 * 1000).toISOString();
-  }
-  // Only match "day" if it's NOT part of "today" or "yesterday" (already handled above)
-  if (lower.includes("day") && !lower.includes("today") && !lower.includes("yesterday")) {
-    return new Date(now.getTime() - number * 24 * 60 * 60 * 1000).toISOString();
-  }
-  if (lower.includes("hour")) {
-    return new Date(now.getTime() - number * 60 * 60 * 1000).toISOString();
-  }
-  if (lower.includes("minute")) {
-    return new Date(now.getTime() - number * 60 * 1000).toISOString();
-  }
-  if (lower.includes("second")) {
-    return new Date(now.getTime() - number * 1000).toISOString();
-  }
-
-  // Try to parse as an absolute date
-  if (!isNaN(Date.parse(dateText))) {
-    return new Date(dateText).toISOString();
-  }
-
-  // Fallback: assume 30 days ago rather than "now" to avoid showing old videos as recent
-  return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-}
 
 function parseQuotaError(error: unknown): YouTubeSearchError {
   const errorMessage = error instanceof Error ? error.message : String(error);
@@ -153,7 +129,6 @@ export async function searchYouTubeVideos(
 
   // Fetch from YouTube.js
   const yt = await getYouTubeClient();
-  const publishedAfter = getPublishedAfter(filters.timeRange);
   const nicheQuery = filters.niche !== "all" ? `${query} ${filters.niche}` : query;
 
   try {
@@ -161,36 +136,46 @@ export async function searchYouTubeVideos(
       type: "video",
     });
 
+    // youtubei.js types search results as a heterogeneous union that omits
+    // the fields we need (duration, view_count, published) on some members,
+    // so cast each video to a uniform shape we know the library returns.
     const videoPromises = searchResults.videos
-      .filter((video: any) => {
+      .filter((raw) => {
+        const video = raw as unknown as YtVideoSearchResult;
         // Filter by duration (skip shorts)
         const durationText = video.duration?.text || "0:00";
         const durationSeconds = parseYouTubeDuration(durationText);
         return durationSeconds >= 60;
       })
-      .map(async (video: any) => {
+      .map(async (raw) => {
+        const video = raw as unknown as YtVideoSearchResult;
         const viewCount = parseViewCount(video.view_count?.text || "0");
         const durationText = video.duration?.text || "0:00";
         const durationSeconds = parseYouTubeDuration(durationText);
         const publishedAt = parsePublishedDate(video.published?.text || "");
 
         // For outlier score, we need channel stats - fetch channel data for accurate calculation
-        let channelAvgViews = viewCount * 0.1; // Fallback rough estimate
-        let outlierScore = 1.0;
+        let channelAvgViews = 0; // Start at 0 = unknown, don't fake it
+        let subscriberCount = 0;
+        let outlierScore = 0;
         try {
           const channelInfo = await yt.getChannel(video.author?.id || "");
-          if (channelInfo && (channelInfo as any).metadata) {
-            const metadata = (channelInfo as any).metadata;
+          if (channelInfo && (channelInfo as { metadata?: YtChannelMetadata }).metadata) {
+            const metadata = (channelInfo as { metadata: YtChannelMetadata }).metadata;
             const totalViews = parseInt(metadata.view_count?.toString() || "0", 10);
             const totalVideos = parseInt(metadata.total_videos?.toString() || "0", 10);
             if (totalVideos > 0 && totalViews > 0) {
               channelAvgViews = totalViews / totalVideos;
             }
+            subscriberCount = parseInt(metadata.subscriber_count?.toString() || "0", 10);
           }
         } catch {
-          // Fallback to rough estimate if channel fetch fails
+          // Channel fetch failed, outlierScore stays 0 (unknown)
         }
-        outlierScore = calculateOutlierScore(viewCount, channelAvgViews);
+        outlierScore = channelAvgViews > 0 ? calculateOutlierScore(viewCount, channelAvgViews) : 0;
+        const subscriberWeightedOutlier = subscriberCount > 0 && outlierScore > 0
+          ? calculateSubscriberWeightedOutlier(outlierScore, subscriberCount)
+          : outlierScore;
 
         const videoData: VideoWithOutlier = {
           id: video.id,
@@ -205,8 +190,10 @@ export async function searchYouTubeVideos(
           duration: formatDuration(durationSeconds),
           description: video.description_snippet?.text || "",
           tags: [], // Not available in search results
+          subscriberCount,
           channelAvgViews: Math.round(channelAvgViews),
           outlierScore,
+          subscriberWeightedOutlier,
           hookType: estimateHookType(video.title?.text || ""),
           estimatedStructure: estimateStructure(video.title?.text || ""),
         };
@@ -253,7 +240,7 @@ export async function getVideoDetails(videoIds: string[]) {
           channelId: basicInfo.channel_id,
           channelTitle: basicInfo.author,
           description: basicInfo.short_description,
-          publishedAt: (basicInfo as any).publish_date || new Date().toISOString(),
+          publishedAt: (basicInfo as YtBasicVideoInfo).publish_date || new Date().toISOString(),
           thumbnails: {
             medium: {
               url: basicInfo.thumbnail?.[0]?.url || "",
@@ -290,9 +277,9 @@ export async function getChannelDetails(channelIds: string[]) {
       details.push({
         id: channelId,
         statistics: {
-          viewCount: (metadata as any).view_count?.toString() || "0",
-          subscriberCount: (metadata as any).subscriber_count?.toString() || "0",
-          videoCount: (metadata as any).total_videos?.toString() || "0",
+          viewCount: (metadata as YtChannelMetadata).view_count?.toString() || "0",
+          subscriberCount: (metadata as YtChannelMetadata).subscriber_count?.toString() || "0",
+          videoCount: (metadata as YtChannelMetadata).total_videos?.toString() || "0",
         },
         snippet: {
           title: metadata.title,

@@ -31,6 +31,9 @@ export async function fetchSubstackPosts(
   limit = 12,
   offset = 0
 ): Promise<SubstackPost[]> {
+  if (!/^[a-zA-Z0-9-]+$/.test(publication)) {
+    throw new Error("Invalid Substack publication name");
+  }
   const url = `https://${publication}.substack.com/api/v1/archive?sort=new&limit=${limit}&offset=${offset}`;
   const response = await proxyFetch(url, { timeout: 10000 });
   if (!response.ok) {

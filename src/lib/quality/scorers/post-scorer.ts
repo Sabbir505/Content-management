@@ -19,6 +19,23 @@ function extractHashtags(text: string): string[] {
   return matches || [];
 }
 
+function buildScore(breakdown: QualityScore["breakdown"], totalScore: number): QualityScore {
+  const suggestions: string[] = [];
+  for (const category of Object.values(breakdown)) {
+    for (const issue of category.issues) {
+      suggestions.push(issue);
+    }
+  }
+  const grade = getGrade(totalScore);
+  return stampScore({
+    score: totalScore,
+    grade: grade.grade,
+    passedThreshold: totalScore >= 60,
+    breakdown,
+    suggestions,
+  });
+}
+
 // ---- X / Twitter Scorer ----
 
 interface XThreadOutput {
@@ -35,7 +52,6 @@ interface XThreadOutput {
 
 export function scoreXPost(output: XThreadOutput): QualityScore {
   const breakdown: QualityScore["breakdown"] = {};
-  const suggestions: string[] = [];
   let totalScore = 0;
 
   const tweets = output.thread?.tweets || [];
@@ -161,21 +177,7 @@ export function scoreXPost(output: XThreadOutput): QualityScore {
   };
   totalScore += engagementScore;
 
-  // Build suggestions
-  for (const category of Object.values(breakdown)) {
-    for (const issue of category.issues) {
-      suggestions.push(issue);
-    }
-  }
-
-  const grade = getGrade(totalScore);
-  return stampScore({
-    score: totalScore,
-    grade: grade.grade,
-    passedThreshold: totalScore >= 60,
-    breakdown,
-    suggestions,
-  });
+  return buildScore(breakdown, totalScore);
 }
 
 // ---- Instagram Scorer ----
@@ -201,7 +203,6 @@ interface InstagramOutput {
 
 export function scoreInstagramPost(output: InstagramOutput): QualityScore {
   const breakdown: QualityScore["breakdown"] = {};
-  const suggestions: string[] = [];
   let totalScore = 0;
 
   const post = output.instagram_post;
@@ -326,20 +327,7 @@ export function scoreInstagramPost(output: InstagramOutput): QualityScore {
   };
   totalScore += engagementScore;
 
-  for (const category of Object.values(breakdown)) {
-    for (const issue of category.issues) {
-      suggestions.push(issue);
-    }
-  }
-
-  const grade = getGrade(totalScore);
-  return stampScore({
-    score: totalScore,
-    grade: grade.grade,
-    passedThreshold: totalScore >= 60,
-    breakdown,
-    suggestions,
-  });
+  return buildScore(breakdown, totalScore);
 }
 
 // ---- Facebook Scorer ----
@@ -359,7 +347,6 @@ interface FacebookOutput {
 
 export function scoreFacebookPost(output: FacebookOutput): QualityScore {
   const breakdown: QualityScore["breakdown"] = {};
-  const suggestions: string[] = [];
   let totalScore = 0;
 
   const post = output.facebook_post;
@@ -456,20 +443,7 @@ export function scoreFacebookPost(output: FacebookOutput): QualityScore {
   };
   totalScore += engagementScore;
 
-  for (const category of Object.values(breakdown)) {
-    for (const issue of category.issues) {
-      suggestions.push(issue);
-    }
-  }
-
-  const grade = getGrade(totalScore);
-  return stampScore({
-    score: totalScore,
-    grade: grade.grade,
-    passedThreshold: totalScore >= 60,
-    breakdown,
-    suggestions,
-  });
+  return buildScore(breakdown, totalScore);
 }
 
 // ---- Dispatcher ----

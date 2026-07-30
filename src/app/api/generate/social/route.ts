@@ -2,83 +2,36 @@ import { z } from "zod";
 import { NextRequest, NextResponse } from "next/server";
 import { evaluateAndDeliver } from "@/lib/quality/regeneration";
 import { enrichGenerationContext } from "@/lib/quality/grounding/grounding-pipeline";
-import type { ScoredOutput, OutputType } from "@/lib/quality/types";
+import type { OutputType } from "@/lib/quality/types";
+import { parseBody, guardApiKey } from "@/lib/api-helpers";
+import { callLLM, parseJsonResponse, type ApiMessage, type VoiceProfileInput } from "@/lib/generation/llm";
+import { voiceProfileSchema } from "@/lib/generation/schemas";
 
 const socialSchema = z.object({
   videoTitle: z.string().min(1, "Video title is required"),
   videoDescription: z.string().optional(),
   platform: z.enum(["x", "instagram", "facebook"]),
   userVoice: z.string().optional(),
-  voiceProfile: z.object({
-    hookStyle: z.string(),
-    sentenceLength: z.string(),
-    tone: z.string(),
-    vocabulary: z.string(),
-    humorLevel: z.string(),
-    ctaPattern: z.string(),
-    sampleSentences: z.array(z.string()).optional(),
-  }).optional(),
+  voiceProfile: voiceProfileSchema.optional(),
   topic: z.string().optional(),
   niche: z.string().optional(),
 });
 
-const API_URL = process.env.KIMI_API_ENDPOINT || "https://ai2.18.show/v1/chat/completions";
-const API_KEY = process.env.KIMI_API_KEY;
-const MODEL = process.env.KIMI_MODEL || "DeepSeek-V4-Pro";
+const LLM_OPTS = { maxTokens: 2000, timeoutMs: 30000, maxRetries: 0 };
 
-interface ApiMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
-interface ApiResponse {
-  choices: {
-    message: {
-      content: string;
-    };
-  }[];
-}
-
-interface VoiceProfileInput {
-  hookStyle: string;
-  sentenceLength: string;
-  tone: string;
-  vocabulary: string;
-  humorLevel: string;
-  ctaPattern: string;
-  sampleSentences?: string[];
-}
-
-async function callLLM(messages: ApiMessage[], temperature: number = 0.7): Promise<string> {
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature,
-      max_tokens: 2000,
-    }),
-    signal: AbortSignal.timeout(30000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
-  }
-
-  const data: ApiResponse = await response.json();
-  return data.choices[0]?.message?.content || "";
-}
-
-function parseSocialResponse(content: string): unknown {
-  const cleanJson = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  try {
-    return JSON.parse(cleanJson);
-  } catch {
-    return content;
+// Minimal valid objects per platform. Used as the parseJsonResponse fallback
+// so a malformed/non-JSON LLM response never leaks as a raw string into the
+// output (formatPostOutput would otherwise pass strings through verbatim).
+function emptyPlatformOutput(platform: string): Record<string, unknown> {
+  switch (platform) {
+    case "x":
+      return { thread: { tweets: [] } };
+    case "instagram":
+      return { instagram_post: { full_post: "" } };
+    case "facebook":
+      return { facebook_post: { full_post: "" } };
+    default:
+      return {};
   }
 }
 
@@ -454,19 +407,11 @@ const USER_PROMPT_BUILDERS: Record<string, typeof buildXUserPrompt> = {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!API_KEY) {
-      return NextResponse.json({ success: false, error: "KIMI_API_KEY not configured" }, { status: 500 });
-    }
+    const guard = await guardApiKey("KIMI_API_KEY");
+    if (guard) return guard;
 
-    const body = await request.json();
-    const parsed = socialSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, error: parsed.error.issues.map((e: { message: string }) => e.message).join(", ") },
-        { status: 400 }
-      );
-    }
+    const validation = await parseBody(request, socialSchema);
+    if (!validation.success) return validation.errorResponse;
 
     const {
       videoTitle,
@@ -475,8 +420,7 @@ export async function POST(request: NextRequest) {
       userVoice,
       voiceProfile: voiceProfileInput,
       topic,
-      niche,
-    } = parsed.data;
+    } = validation.data;
 
     if (!videoTitle.trim()) {
       return NextResponse.json(
@@ -497,9 +441,7 @@ export async function POST(request: NextRequest) {
 
     // Layer 1: Data Grounding
     const groundingContext = await enrichGenerationContext(
-      topic || videoTitle,
-      niche || "general",
-      outputType
+      topic || videoTitle
     );
 
     const systemPrompt = SYSTEM_PROMPTS[platform] || SYSTEM_PROMPTS.x;
@@ -518,8 +460,8 @@ export async function POST(request: NextRequest) {
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ];
-    const initialContent = await callLLM(initialMessages, 0.7);
-    const initialOutput = parseSocialResponse(initialContent);
+    const initialContent = await callLLM(initialMessages, { ...LLM_OPTS, temperature: 0.7 });
+    const initialOutput = parseJsonResponse(initialContent, emptyPlatformOutput(platform));
 
     // Score and auto-regenerate if needed
     const scoredOutput = await evaluateAndDeliver(
@@ -544,8 +486,8 @@ ${suggestions.map((s) => `- ${s}`).join("\n")}
           { role: "user", content: regenerationContext + userPrompt },
         ];
 
-        const content = await callLLM(messages, 0.6); // Drop temperature by 0.1
-        return parseSocialResponse(content);
+        const content = await callLLM(messages, { ...LLM_OPTS, temperature: 0.6 }); // Drop temperature by 0.1
+        return parseJsonResponse(content, emptyPlatformOutput(platform));
       }
     );
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectPlatform, disconnectPlatform } from "@/lib/quality/feedback/platform-connections";
+import { validateUserAccess } from "@/lib/api-auth";
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,6 +11,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const authError = await validateUserAccess(request, userId);
+    if (authError) return authError;
 
     await connectPlatform(userId, "youtube", {
       tokenEncrypted: accessToken,
@@ -35,6 +39,9 @@ export async function DELETE(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const authError = await validateUserAccess(request, userId);
+    if (authError) return authError;
 
     await disconnectPlatform(userId, "youtube");
     return NextResponse.json({ success: true, data: { connected: false } });

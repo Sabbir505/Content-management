@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTrackedContent } from "@/lib/quality/feedback/content-tracker";
-import { getUserConnections } from "@/lib/quality/feedback/platform-connections";
 import { computeCorrelations } from "@/lib/quality/feedback/correlation-engine";
 import { getUserWeights } from "@/lib/quality/feedback/calibration";
-import type { PerformanceInsights, PlatformType } from "@/lib/quality/types";
+import { PLATFORM_TYPES, type PerformanceInsights } from "@/lib/quality/types";
+import { validateUserAccess } from "@/lib/api-auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,9 +15,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const [trackedContent, connections, correlations, weights] = await Promise.all([
+    const authError = await validateUserAccess(request, userId);
+    if (authError) return authError;
+
+    const [trackedContent, correlations, weights] = await Promise.all([
       getTrackedContent(userId),
-      getUserConnections(userId),
       computeCorrelations(userId).catch(() => []),
       getUserWeights(userId),
     ]);
@@ -25,7 +27,7 @@ export async function GET(request: NextRequest) {
     const totalGenerated = trackedContent.length;
     const totalTracked = trackedContent.filter((t) => t.publishedUrl).length;
 
-    const platformBreakdown = (["youtube", "x", "instagram", "facebook"] as PlatformType[]).map(
+    const platformBreakdown = PLATFORM_TYPES.map(
       (platform) => {
         const platformContent = trackedContent.filter((t) => t.platform === platform);
 

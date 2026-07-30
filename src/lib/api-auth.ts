@@ -1,48 +1,123 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createRemoteJWKSet, jwtVerify, decodeJwt, type JWTPayload } from "jose";
 
 /**
- * Verifies Firebase ID token from the Authorization header.
- * Uses Firebase Admin SDK if available, otherwise falls back to
- * verifying the token against Firebase's public keys.
+ * Verifies a Firebase ID token from the Authorization header using the
+ * Firebase public keys (JWKS). Signature is actually checked — we never
+ * trust an unsigned/decoded payload.
  *
- * For now, we do a lightweight verification by checking:
- * 1. Authorization header exists with Bearer token
- * 2. Token is a valid JWT structure
- * 3. The userId in the request body/params matches the token's sub claim
- *
- * This prevents one authenticated user from accessing another user's data.
+ * Firebase ID tokens are RS256-signed JWTs whose `sub` claim is the user's UID.
+ * https://firebase.google.com/docs/auth/admin/verify-id-tokens
  */
-export function extractUserIdFromToken(request: NextRequest): string | null {
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) return null;
 
-  const token = authHeader.slice(7);
+const FIREBASE_JWKS = createRemoteJWKSet(
+  new URL("https://www.googleapis.com/service_accounts/v1/metadata/x509/securetoken@system.gserviceaccount.com"),
+  { timeoutDuration: 2500 }
+);
+
+// Cache verified tokens so we don't hit the JWKS endpoint on every request.
+const tokenCache = new Map<string, { userId: string; expiresAt: number }>();
+const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Development-only bypass for machines that cannot reach googleapis.com
+// (restrictive VPN/firewall). Decodes tokens without signature verification —
+// never enable outside local development.
+const devBypassEnabled =
+  process.env.NODE_ENV === "development" &&
+  process.env.TUBEFORGE_DEV_AUTH_BYPASS === "true";
+
+// Once the JWKS endpoint fails with a network error, skip it for a while
+// instead of paying the fetch timeout on every request.
+let jwksUnreachableUntil = 0;
+
+function decodeUnverified(token: string): JWTPayload | null {
   try {
-    // Decode JWT payload (base64url)
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-
-    const payload = JSON.parse(
-      Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString()
-    );
-
-    // Check expiration
-    if (payload.exp && payload.exp * 1000 < Date.now()) return null;
-
-    return payload.sub || payload.user_id || null;
+    return decodeJwt(token);
   } catch {
     return null;
   }
 }
 
+async function verifyIdToken(token: string): Promise<JWTPayload | null> {
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+  if (!projectId) return null;
+
+  if (devBypassEnabled && Date.now() < jwksUnreachableUntil) {
+    return decodeUnverified(token);
+  }
+
+  try {
+    const { payload } = await jwtVerify(token, FIREBASE_JWKS, {
+      issuer: `https://securetoken.google.com/${projectId}`,
+      algorithms: ["RS256"],
+    });
+
+    return payload;
+  } catch (error) {
+    const isNetworkError =
+      error instanceof Error &&
+      (error.name === "JWKSTimeout" ||
+        error.message.includes("fetch") ||
+        error.message.includes("timed out") ||
+        error.message.includes("timeout") ||
+        error.message.includes("network") ||
+        error.message.includes("ENOTFOUND") ||
+        error.message.includes("ETIMEDOUT") ||
+        error.message.includes("ECONNREFUSED") ||
+        error.message.includes("ECONNRESET"));
+
+    if (devBypassEnabled && isNetworkError) {
+      jwksUnreachableUntil = Date.now() + TOKEN_CACHE_TTL_MS;
+      console.warn("[dev] Auth verification bypassed for network error.");
+      return decodeUnverified(token);
+    }
+
+    return null;
+  }
+}
+
 /**
- * Validates that the userId in the request matches the authenticated user.
- * Returns an error response if validation fails, or null if valid.
+ * Extracts and verifies the authenticated user's UID from the Authorization
+ * header. Returns null if there is no valid, unexpired, signed token.
  */
-export function validateUserAccess(
+export async function extractUserIdFromToken(request: NextRequest): Promise<string | null> {
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+
+  const token = authHeader.slice(7).trim();
+  if (!token) return null;
+
+  const cached = tokenCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.userId;
+  }
+
+  const payload = await verifyIdToken(token);
+  if (!payload) return null;
+
+  if (payload.exp && payload.exp * 1000 < Date.now()) return null;
+
+  const sub = payload.sub || payload.user_id;
+  const userId = typeof sub === "string" ? sub : null;
+
+  if (userId) {
+    tokenCache.set(token, { userId, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS });
+  }
+
+  return userId;
+}
+
+/**
+ * Validates that the requesting user is authenticated and that the
+ * `requestedUserId` matches the signed token's subject.
+ *
+ * Returns an error response on failure, or null when access is allowed.
+ * A missing/invalid token is rejected (401) — no anonymous access.
+ */
+export async function validateUserAccess(
   request: NextRequest,
   requestedUserId: string | null
-): NextResponse | null {
+): Promise<NextResponse | null> {
   if (!requestedUserId) {
     return NextResponse.json(
       { success: false, error: "userId is required" },
@@ -50,18 +125,18 @@ export function validateUserAccess(
     );
   }
 
-  const tokenUserId = extractUserIdFromToken(request);
+  const tokenUserId = await extractUserIdFromToken(request);
 
-  // If no auth header provided, allow the request but log warning
-  // This maintains backward compatibility while the client is updated
   if (!tokenUserId) {
-    return null;
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 }
+    );
   }
 
-  // If auth header IS provided, enforce that it matches the requested userId
   if (tokenUserId !== requestedUserId) {
     return NextResponse.json(
-      { success: false, error: "Unauthorized: userId mismatch" },
+      { success: false, error: "Forbidden: user mismatch" },
       { status: 403 }
     );
   }

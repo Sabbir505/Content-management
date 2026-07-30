@@ -2,7 +2,7 @@ export interface ContentItem {
   id: string;
   title: string;
   url: string;
-  source: "hackernews" | "reddit" | "devto" | "x" | "substack" | "instagram" | "tiktok" | "linkedin";
+  source: "hackernews" | "devto" | "substack";
   author: string;
   authorUrl?: string;
   score: number; // upvotes, likes, etc.

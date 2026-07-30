@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { YoutubeTranscript, YoutubeTranscriptError } from "youtube-transcript";
+import { proxyFetch } from "@/lib/proxy";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,13 +24,27 @@ export async function GET(request: NextRequest) {
 
     const transcript = await YoutubeTranscript.fetchTranscript(videoId, {
       lang: "en",
+      fetch: proxyFetch as typeof fetch,
+    }).catch((error) => {
+      // Re-throw typed errors so the outer handler can map them to the
+      // right status (429/404); swallow only unexpected non-typed errors
+      // so the route still returns an empty transcript rather than 500.
+      if (error instanceof YoutubeTranscriptError) throw error;
+      console.error("Transcript fetch failed:", error);
+      return null;
     });
 
     if (!transcript || transcript.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "No transcript available for this video" },
-        { status: 404 }
-      );
+      return NextResponse.json({
+        success: true,
+        data: {
+          videoId,
+          transcript: "",
+          segments: [],
+          wordCount: 0,
+          segmentCount: 0,
+        },
+      });
     }
 
     // Join transcript segments into full text

@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardApiKey } from "@/lib/api-helpers";
 import { buildRegenerationPrompt } from "@/lib/quality/regeneration";
-
-const API_URL = process.env.KIMI_API_ENDPOINT || "https://ai2.18.show/v1/chat/completions";
-const API_KEY = process.env.KIMI_API_KEY;
-const MODEL = process.env.KIMI_MODEL || "DeepSeek-V4-Pro";
+import { callLLM } from "@/lib/generation/llm";
 
 export async function POST(request: NextRequest) {
   try {
-    if (!API_KEY) {
-      return NextResponse.json({ success: false, error: "KIMI_API_KEY not configured" }, { status: 500 });
-    }
+    const guard = await guardApiKey("KIMI_API_KEY");
+    if (guard) return guard;
 
     const body = await request.json();
     const {
       outputType,
-      originalOutput,
       score,
       originalPrompt,
       systemPrompt,
@@ -33,60 +29,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build regeneration context using the prompt library format
     const regenerationContext = buildRegenerationPrompt(
-      score as Parameters<typeof buildRegenerationPrompt>[0],
-      outputType as Parameters<typeof buildRegenerationPrompt>[1]
+      score as Parameters<typeof buildRegenerationPrompt>[0]
     );
 
-    const fullUserPrompt = regenerationContext + originalPrompt;
-
     const messages = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: fullUserPrompt },
+      { role: "system" as const, content: systemPrompt },
+      { role: "user" as const, content: regenerationContext + originalPrompt },
     ];
 
-    // Drop temperature by 0.1 for regeneration
-    const temperature = 0.6;
-
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages,
-        temperature,
-        max_tokens: 2500,
-      }),
-      signal: AbortSignal.timeout(30000),
+    const improvedOutput = await callLLM(messages, {
+      temperature: 0.6,
+      maxTokens: 2500,
+      timeoutMs: 30000,
+      maxRetries: 0,
     });
 
-    if (!response.ok) {
-      return NextResponse.json(
-        { success: false, error: `API error: ${response.status}` },
-        { status: 500 }
-      );
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content || "";
-
-    // Try to parse as JSON, fall back to raw text
-    let parsedOutput: unknown;
-    try {
-      const cleanJson = content
-        .replace(/```json\n?/g, "")
-        .replace(/```\n?/g, "")
-        .trim();
-      parsedOutput = JSON.parse(cleanJson);
-    } catch {
-      parsedOutput = content;
-    }
-
-    return NextResponse.json({ success: true, data: parsedOutput });
+    return NextResponse.json({ success: true, data: improvedOutput });
   } catch (error) {
     console.error("Auto-regeneration error:", error);
     return NextResponse.json(

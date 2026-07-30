@@ -19,8 +19,19 @@ export interface CreatorVideo {
   thumbnail: string;
   publishedAt: string;
   viewCount: number;
+  likeCount: number;
   duration: string;
   outlierScore: number;
   hookType: string;
   estimatedStructure: string;
+}
+
+export interface CreatorList {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  creatorIds: string[];
+  createdAt: string;
+  updatedAt: string;
 }

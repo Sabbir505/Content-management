@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { NextRequest, NextResponse } from "next/server";
+import { parseBody, guardApiKey } from "@/lib/api-helpers";
+import { callLLM, type ApiMessage } from "@/lib/generation/llm";
 
 const regenerateSchema = z.object({
   sectionType: z.string().min(1, "Section type is required"),
@@ -8,40 +10,15 @@ const regenerateSchema = z.object({
   instruction: z.string().optional(),
 });
 
-const API_URL = process.env.KIMI_API_ENDPOINT || "https://ai2.18.show/v1/chat/completions";
-const API_KEY = process.env.KIMI_API_KEY;
-const MODEL = process.env.KIMI_MODEL || "DeepSeek-V4-Pro";
-
-interface ApiMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
-interface ApiResponse {
-  choices: {
-    message: {
-      content: string;
-    };
-  }[];
-}
-
 export async function POST(request: NextRequest) {
   try {
-    if (!API_KEY) {
-      return NextResponse.json({ success: false, error: "KIMI_API_KEY not configured" }, { status: 500 });
-    }
+    const guard = await guardApiKey("KIMI_API_KEY");
+    if (guard) return guard;
 
-    const body = await request.json();
-    const parsed = regenerateSchema.safeParse(body);
+    const validation = await parseBody(request, regenerateSchema);
+    if (!validation.success) return validation.errorResponse;
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, error: parsed.error.issues.map((e: { message: string }) => e.message).join(", ") },
-        { status: 400 }
-      );
-    }
-
-    const { sectionType, currentScript, userVoice, instruction } = parsed.data;
+    const { sectionType, currentScript, userVoice, instruction } = validation.data;
 
     const messages: ApiMessage[] = [
       {
@@ -69,30 +46,15 @@ Please provide ONLY the new ${sectionType} section content (without the section 
       },
     ];
 
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages,
-        temperature: 0.7,
-        max_tokens: 1000,
-      }),
-      signal: AbortSignal.timeout(30000),
+    const section = await callLLM(messages, {
+      temperature: 0.7,
+      maxTokens: 1000,
+      timeoutMs: 30000,
+      maxRetries: 0,
     });
 
-    if (!response.ok) {
-      return NextResponse.json({ success: false, error: "Failed to regenerate section" }, { status: 500 });
-    }
-
-    const data: ApiResponse = await response.json();
-    const section = data.choices[0]?.message?.content || "";
-
     return NextResponse.json({ success: true, data: section });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
   }
 }

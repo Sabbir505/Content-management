@@ -30,15 +30,15 @@ export function PlatformConnectionCard({
   onDisconnect,
 }: PlatformConnectionCardProps) {
   return (
-    <div className="flex items-center justify-between border rounded-lg p-4">
+    <div className="flex items-center justify-between border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg p-4 transition-colors">
       <div className="flex items-center gap-3">
-        <span className="text-lg">{platformIcons[connection.platform]}</span>
+        <span className="text-lg text-[#ccc]">{platformIcons[connection.platform]}</span>
         <div>
-          <p className="font-medium text-sm">
+          <p className="font-medium text-sm text-white">
             {platformLabels[connection.platform]}
           </p>
           {connection.connected && connection.platformUsername && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-[#666]">
               Connected as @{connection.platformUsername}
             </p>
           )}
@@ -50,19 +50,28 @@ export function PlatformConnectionCard({
           className={cn(
             "text-xs font-medium px-2 py-1 rounded",
             connection.connected
-              ? "bg-green-100 text-green-700"
-              : "bg-gray-100 text-gray-500"
+              ? "bg-emerald-400/10 text-emerald-400"
+              : "bg-[#2a2a2a] text-[#888]"
           )}
         >
           {connection.connected ? "Connected" : "Not connected"}
         </span>
 
         {connection.connected ? (
-          <Button size="sm" variant="outline" onClick={onDisconnect}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onDisconnect}
+            className="bg-[#0a0a0a] border-[#3a3a3a] text-white hover:bg-[#2a2a2a] hover:border-[#3a3a3a] focus-visible:ring-2 focus-visible:ring-[#3a3a3a] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a1a] transition-colors"
+          >
             Disconnect
           </Button>
         ) : (
-          <Button size="sm" onClick={onConnect}>
+          <Button
+            size="sm"
+            onClick={onConnect}
+            className="bg-emerald-400 text-[#0a0a0a] hover:bg-emerald-300 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a1a] transition-colors"
+          >
             Connect
           </Button>
         )}

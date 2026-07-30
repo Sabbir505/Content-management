@@ -71,8 +71,7 @@ export async function evaluateAndDeliver<T>(
 }
 
 export function buildRegenerationPrompt(
-  score: QualityScore,
-  outputType: OutputType
+  score: QualityScore
 ): string {
   const issues = Object.values(score.breakdown)
     .flatMap((b) => b.issues)

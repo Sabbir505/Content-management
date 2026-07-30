@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TubeForge — Full User Flow Diagram</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a28;
+    --border: #252540;
+    --text: #d4d4e8;
+    --text-muted: #8888a8;
+    --accent: #7c5cfc;
+    --accent2: #4ecdc4;
+    --accent3: #ff6b6b;
+    --accent4: #ffd93d;
+    --accent5: #6bcb77;
+    --accent6: #4d96ff;
+    --page: #1e1e36;
+    --hook: #2a2a44;
+    --api: #ff6b6b20;
+    --api-border: #ff6b6b40;
+    --firebase: #ffd93d20;
+    --firebase-border: #ffd93d40;
+    --storage: #4ecdc420;
+    --storage-border: #4ecdc440;
+    --generation: #7c5cfc20;
+    --generation-border: #7c5cfc40;
+    --external: #4d96ff20;
+    --external-border: #4d96ff40;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    padding: 40px 20px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+    letter-spacing: -0.5px;
+  }
+  .subtitle {
+    text-align: center;
+    color: var(--text-muted);
+    margin-bottom: 40px;
+    font-size: 0.9rem;
+  }
+  .legend {
+    display: flex;
+    gap: 18px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 36px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+  .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+  }
+
+  .flow-container {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* ── FLOW ROW ── */
+  .flow-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: 0;
+    position: relative;
+  }
+  .flow-arrow-row {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0 16px;
+  }
+  .flow-arrow-row svg {
+    width: 48px;
+    height: 32px;
+    opacity: 0.45;
+  }
+
+  /* ── NODE ── */
+  .node {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 22px;
+    flex: 1;
+    position: relative;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .node:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 20px rgba(124, 92, 252, 0.12);
+  }
+  .node.page   { border-left: 3px solid var(--accent); }
+  .node.hook   { border-left: 3px solid var(--accent2); background: var(--hook); }
+  .node.api    { border-left: 3px solid var(--accent3); background: var(--api); }
+  .node.storage{ border-left: 3px solid var(--accent4); background: var(--storage); }
+  .node.gen    { border-left: 3px solid var(--accent5); background: var(--generation); }
+  .node.ext    { border-left: 3px solid var(--accent6); background: var(--external); }
+
+  .node-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+  .node.page   .node-label { color: var(--accent); }
+  .node.hook   .node-label { color: var(--accent2); }
+  .node.api    .node-label { color: var(--accent3); }
+  .node.storage .node-label{ color: var(--accent4); }
+  .node.gen    .node-label { color: var(--accent5); }
+  .node.ext    .node-label { color: var(--accent6); }
+
+  .node h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    letter-spacing: -0.3px;
+  }
+  .node .desc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.45;
+  }
+  .node ul {
+    margin-top: 8px;
+    padding-left: 16px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+  .node ul li { margin-bottom: 2px; }
+
+  /* ── SECTION BANNER ── */
+  .section-banner {
+    text-align: center;
+    padding: 20px 0 12px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .section-banner::after {
+    content: '';
+    display: block;
+    width: 60px;
+    height: 2px;
+    background: var(--border);
+    margin: 10px auto 0;
+  }
+
+  /* ── SIDE-BY-SIDE ── */
+  .side-by-side {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  /* ── HORIZONTAL FLOW (pages) ── */
+  .page-flow {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+  }
+
+  /* ── DATA FLOW TABLE ── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    margin-top: 24px;
+  }
+  .data-table th {
+    text-align: left;
+    color: var(--text-muted);
+    font-weight: 600;
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--border);
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .data-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: top;
+  }
+  .data-table tr:hover td { background: rgba(124,92,252,0.04); }
+  .data-table code {
+    background: var(--surface2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.73rem;
+    color: var(--accent2);
+  }
+
+  /* ── ARROW CONNECTOR ── */
+  .connector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+  .connector svg { width: 32px; height: 24px; opacity: 0.35; }
+
+  /* ── GAP ── */
+  .gap-24 { height: 24px; }
+
+  /* ── HOOK COMPOSITION DIAGRAM ── */
+  .hook-map {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .hook-map h2 {
+    font-size: 1rem;
+    margin-bottom: 16px;
+    color: var(--accent2);
+  }
+  .hook-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+  }
+  .hook-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 0.78rem;
+  }
+  .hook-card .hook-name {
+    font-weight: 700;
+    color: var(--accent2);
+    margin-bottom: 4px;
+  }
+  .hook-card .hook-file {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    margin-bottom: 4px;
+  }
+  .hook-card .hook-consumer {
+    color: var(--accent);
+    font-size: 0.72rem;
+  }
+
+  @media (max-width: 768px) {
+    .side-by-side { grid-template-columns: 1fr; }
+    .page-flow { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>TubeForge — User Flow Diagram</h1>
+<p class="subtitle">Complete journey from landing to content generation &mdash; pages, hooks, APIs, storage, and external services</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div> Page / Route</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent2)"></div> React Hook</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent3)"></div> API Route</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent4)"></div> Storage (Firestore / localStorage)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent5)"></div> Generation (LLM)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent6)"></div> External API / Scraper</div>
+</div>
+
+<div class="flow-container">
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 1: AUTH & LANDING -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Phase 1 &mdash; Authentication &amp; Landing</div>
+
+<div class="page-flow">
+  <div class="node page">
+    <div class="node-label">Page</div>
+    <h3>/ (Home)</h3>
+    <div class="desc">Entry point. Onboarding checklist (3 steps), daily streak, quick navigation sidebar.</div>
+    <ul>
+      <li>Onboarding: ≥1 board, ≥2 chats, ≥3 tracked creators</li>
+      <li>Streak: consecutive activity days in localStorage</li>
+      <li>Hook: <code>useHomePage</code></li>
+    </ul>
+  </div>
+  <div class="node page">
+    <div class="node-label">Page</div>
+    <h3>/auth/login &amp; /auth/signup</h3>
+    <div class="desc">Firebase Auth — email/password. Auth guard on /discover redirects here if not signed in.</div>
+    <ul>
+      <li>Hook: <code>useAuth</code></li>
+      <li>Provider: Firebase Auth</li>
+    </ul>
+  </div>
+  <div class="node page">
+    <div class="node-label">Page</div>
+    <h3>/onboarding</h3>
+    <div class="desc">Guided setup flow for new users.</div>
+  </div>
+  <div class="node storage">
+    <div class="node-label">Storage</div>
+    <h3>Auth State</h3>
+    <div class="desc">Firebase Auth (primary) with localStorage degradation.</div>
+    <ul>
+      <li><code>useAuth</code> context wraps entire app</li>
+      <li>User object available to all hooks</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 2: DISCOVER — MAIN WORKSPACE -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Phase 2 &mdash; Discover Feed (Main Research Workspace)</div>
+
+<div class="hook-map">
+  <h2>Hook Composition in /discover</h2>
+  <div class="hook-grid">
+    <div class="hook-card">
+      <div class="hook-name">useAuth()</div>
+      <div class="hook-file">src/hooks/useAuth.ts</div>
+      <div class="hook-consumer">→ user, authLoading</div>
+    </div>
+    <div class="hook-card">
+      <div class="hook-name">useDiscoverData()</div>
+      <div class="hook-file">src/hooks/useDiscoverData.ts (179 lines)</div>
+      <div class="hook-consumer">→ videos, contentItems, isLoading*, error, fetchVideos, fetchContent, handleRetry</div>
+    </div>
+    <div class="hook-card">
+      <div class="hook-name">useCategories()</div>
+      <div class="hook-file">src/hooks/useCategories.ts (101 lines)</div>
+      <div class="hook-consumer">→ activeCategories, customCategories, handleAddCategory, allCategories</div>
+    </div>
+    <div class="hook-card">
+      <div class="hook-name">useDiscoverFilters({…})</div>
+      <div class="hook-file">src/hooks/useDiscoverFilters.ts (296 lines)</div>
+      <div class="hook-consumer">→ 9 filter states + filteredVideos, filteredArticles, unifiedItems, sortedVideos, sortedArticles</div>
+    </div>
+    <div class="hook-card">
+      <div class="hook-name">useChatSessions()</div>
+      <div class="hook-file">src/hooks/useChatSessions.ts (58 lines)</div>
+      <div class="hook-consumer">→ chatSessions, chatDropdownOpen (sidebar dropdown)</div>
+    </div>
+    <div class="hook-card">
+      <div class="hook-name">useWorkspaceBoard({ user })</div>
+      <div class="hook-file">src/hooks/useWorkspaceBoard.ts (247 lines)</div>
+      <div class="hook-consumer">→ activeWorkspace, workspaceCards, card CRUD (6 fns)</div>
+    </div>
+    <div class="hook-card">
+      <div class="hook-name">useCreatorSearch({ user, addCreator })</div>
+      <div class="hook-file">src/hooks/useCreatorSearch.ts (119 lines)</div>
+      <div class="hook-consumer">→ query, results, isSearching, handleSearchCreators, handleTrackCreator</div>
+    </div>
+    <div class="hook-card">
+      <div class="hook-name">useLocalCreators()</div>
+      <div class="hook-file">src/hooks/useLocalCreators.ts</div>
+      <div class="hook-consumer">→ trackedCreators, addCreator, refresh</div>
+    </div>
+    <div class="hook-card">
+      <div class="hook-name">useBlocklistSync()</div>
+      <div class="hook-file">src/hooks/useBlocklistSync.ts (17 lines)</div>
+      <div class="hook-consumer">→ blocklistVersion (triggers filter re-memo)</div>
+    </div>
+  </div>
+</div>
+
+<!-- Discover page detail -->
+<div class="node page" style="margin-bottom:20px">
+  <div class="node-label">Page</div>
+  <h3>/discover &mdash; Orchestrator (952 lines, down from 2182)</h3>
+  <div class="desc">
+    Composes 9 hooks. Handles URL-param parsing, main fetch effect, infinite-scroll IntersectionObserver,
+    auth guard, search submit, quick-pill handler. All business logic lives in hooks.
+  </div>
+</div>
+
+<div class="side-by-side">
+  <div>
+    <!-- Feed fetch flow -->
+    <div class="node api" style="margin-bottom:14px">
+      <div class="node-label">API</div>
+      <h3>GET /api/youtube/search</h3>
+      <div class="desc">Fetches outlier YouTube videos by category query. Returns scored Video[] with outlier factor.</div>
+      <ul><li>Source: YouTube Data API v3</li><li>Lib: <code>src/lib/youtube.ts</code></li></ul>
+    </div>
+    <div class="node api">
+      <div class="node-label">API</div>
+      <h3>GET /api/content/search</h3>
+      <div class="desc">Fetches articles from HN (Algolia), DEV.to (scraped), Substack (scraped). Returns ContentItem[].</div>
+      <ul><li>Lib: <code>src/lib/content/index.ts</code>, <code>hackernews.ts</code></li></ul>
+    </div>
+  </div>
+  <div>
+    <!-- Scoring -->
+    <div class="node ext" style="margin-bottom:14px">
+      <div class="node-label">Lib</div>
+      <h3>Discovery Scoring</h3>
+      <div class="desc"><code>calculateVideoDiscoveryScore</code> + <code>calculateContentDiscoveryScore</code></div>
+      <ul>
+        <li>Engagement (views/comments/score)</li>
+        <li>Recency (age in hours)</li>
+        <li>Outlier factor (× channel median)</li>
+        <li>Lib: <code>src/lib/discovery-score.ts</code>, <code>src/lib/outlier.ts</code></li>
+      </ul>
+    </div>
+    <div class="node ext">
+      <div class="node-label">Lib</div>
+      <h3>Time Period Helpers</h3>
+      <div class="desc"><code>src/lib/discovery/time-periods.ts</code> — TIME_PERIOD_MS, getTimePeriodCutoff, getOutlierMin, getAgeHours, parseDurationToSeconds</div>
+    </div>
+  </div>
+</div>
+
+<!-- Filtering sub-flow -->
+<div class="node" style="margin-bottom:20px">
+  <h3>Filtering &amp; Blocking Pipeline</h3>
+  <div class="desc" style="display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+    <span style="background:var(--surface2);padding:4px 10px;border-radius:6px;font-size:0.75rem">Platforms (4)</span>
+    <span style="color:var(--text-muted)">→</span>
+    <span style="background:var(--surface2);padding:4px 10px;border-radius:6px;font-size:0.75rem">Format (video/short/article)</span>
+    <span style="color:var(--text-muted)">→</span>
+    <span style="background:var(--surface2);padding:4px 10px;border-radius:6px;font-size:0.75rem">Language (12)</span>
+    <span style="color:var(--text-muted)">→</span>
+    <span style="background:var(--surface2);padding:4px 10px;border-radius:6px;font-size:0.75rem">Followers (5 ranges)</span>
+    <span style="color:var(--text-muted)">→</span>
+    <span style="background:var(--surface2);padding:4px 10px;border-radius:6px;font-size:0.75rem">Outlier (3×–50×)</span>
+    <span style="color:var(--text-muted)">→</span>
+    <span style="background:var(--surface2);padding:4px 10px;border-radius:6px;font-size:0.75rem">Time (Week–All)</span>
+    <span style="color:var(--text-muted)">→</span>
+    <span style="background:var(--surface2);padding:4px 10px;border-radius:6px;font-size:0.75rem">Sort (top/trending/recent/discussed)</span>
+    <span style="color:var(--text-muted)">→</span>
+    <span style="background:var(--accent3);padding:4px 10px;border-radius:6px;font-size:0.75rem;color:#fff">Blocklist</span>
+  </div>
+  <ul style="margin-top:10px">
+    <li><strong>Blocklist triggers:</strong> "Not in my language" → blockLanguage(), "Hide this creator" → blockCreator(), "Hide" → blockItem()</li>
+    <li><strong>Reactive:</strong> dispatches <code>tubeforge-blocklist-updated</code> window event → <code>useBlocklistSync</code> bumps version → filter memos re-run</li>
+    <li><strong>Persistence:</strong> localStorage <code>tubeforge_blocklist</code></li>
+    <li><strong>Component:</strong> <code>FilterDropdown.tsx</code> (320 lines, 18 props)</li>
+  </ul>
+</div>
+
+<!-- Category pills -->
+<div class="node" style="margin-bottom:20px">
+  <h3>Category Pills</h3>
+  <div class="desc">
+    Defaults: Productivity, Self-improvement, Business, Health &amp; fitness, Content creation, Psychology, Technology, Finance, Entertainment.
+    Click to fetch. Add custom (input + Enter). Remove (hover → X).
+    Persisted to <code>discover_activeCategories</code> / <code>discover_customCategories</code> in localStorage.
+    Component: <code>CategoryPills.tsx</code>
+  </div>
+</div>
+
+<!-- Research tabs -->
+<div class="page-flow">
+  <div class="node">
+    <h3>Discover Tab</h3>
+    <div class="desc">Masonry feed of VideoCard + ContentCard. Infinite scroll via IntersectionObserver (bumps displayCount by 12).</div>
+  </div>
+  <div class="node">
+    <h3>Creators Tab</h3>
+    <div class="desc">Search YouTube channels by name. Track creators (saved to localStorage). "All following" list.</div>
+  </div>
+  <div class="node">
+    <h3>Lists Tab</h3>
+    <div class="desc">Creator list groups. Manage list membership.</div>
+  </div>
+  <div class="node">
+    <h3>Channel Tab</h3>
+    <div class="desc">Per-channel analytics: subs, video count, recent performance. <code>ChannelAnalytics</code> component.</div>
+  </div>
+</div>
+
+<!-- Cards -->
+<div class="side-by-side">
+  <div class="node">
+    <h3>VideoCard (490 lines)</h3>
+    <div class="desc">Card body + context menu + boost modal. Uses <code>useCardState</code> hook.</div>
+    <ul>
+      <li>Context menu: Hide, Not in my language, Hide creator, Boost, Save to board</li>
+      <li>Modal extracted to <code>VideoCardModal.tsx</code> (252 lines)</li>
+      <li>Menu factories in <code>VideoCardMenus.tsx</code></li>
+    </ul>
+  </div>
+  <div class="node">
+    <h3>ContentCard (336 lines)</h3>
+    <div class="desc">Card body + context menu + boost modal. Uses <code>useCardState</code> hook.</div>
+    <ul>
+      <li>Source emoji/label via <code>getSourceIcon</code>, <code>getSourceLabel</code> from <code>src/lib/content/sources.ts</code></li>
+      <li>Modal extracted to <code>ContentCardModal.tsx</code> (208 lines)</li>
+    </ul>
+  </div>
+</div>
+<div class="node hook" style="margin-bottom:20px;">
+  <div class="node-label">Hook</div>
+  <h3>useCardState (src/hooks/useCardState.ts, 44 lines)</h3>
+  <div class="desc">Shared by VideoCard + ContentCard. Owns: imageError, isModalOpen, isBoostOpen, fullDescription, isLoadingDescription. Handlers: openModal, closeModal, openBoost, closeBoost.</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 3: CHAT PANEL -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Phase 3 &mdash; Chat Panel &amp; Content Generation</div>
+
+<div class="side-by-side">
+  <div class="node hook">
+    <div class="node-label">Hook</div>
+    <h3>useContentChat (238 lines)</h3>
+    <div class="desc">Owns entire chat state + logic for ContentChatPanel.</div>
+    <ul>
+      <li>State: messages, inputText, isLoading, savingBoard</li>
+      <li>Derived: systemContext (LLM prompt from item)</li>
+      <li>Effects: scroll-to-bottom, escape-key, auto-send initialPrompt</li>
+      <li>Handlers: handleSendMessage, handleHeadlineVariations, handleSaveAllToBoard, handleGenerateLink, resetChat</li>
+      <li>Exports ChatMessage interface + isVideo type guard</li>
+    </ul>
+  </div>
+  <div class="node gen">
+    <div class="node-label">Generation</div>
+    <h3>ContentChatPanel (247 lines)</h3>
+    <div class="desc">Split chat panel. Opens from card chat button, sidebar Chat dropdown, or workspace quick pills.</div>
+    <ul>
+      <li>Artifacts: headline_variations (5 categories), script, social_posts</li>
+      <li>Header: New chat, Link (shareable URL → My Ideas)</li>
+      <li>Quick pills: Start Writing, Creator Research, Topic Research, Watchlist</li>
+      <li>Save all 5 headlines to board with spinner + toast</li>
+    </ul>
+  </div>
+</div>
+
+<div class="side-by-side">
+  <div class="node api">
+    <div class="node-label">API</div>
+    <h3>POST /api/chat/generate</h3>
+    <div class="desc">Main LLM chat. Sends session ID + message history + detected intent (script/social/chat). Returns assistant response with optional artifact.</div>
+  </div>
+  <div class="node api">
+    <div class="node-label">API</div>
+    <h3>POST /api/chat/headline-variations</h3>
+    <div class="desc">Dedicated endpoint for 5-category headline structure: Contrarian reframe, Confession/Stakes, Specific promise, Curiosity gap, Polarizing swing.</div>
+  </div>
+</div>
+
+<div class="page-flow">
+  <div class="node api">
+    <div class="node-label">API</div>
+    <h3>POST /api/chat/session</h3>
+    <div class="desc">Create chat session.</div>
+  </div>
+  <div class="node api">
+    <div class="node-label">API</div>
+    <h3>POST /api/chat/message</h3>
+    <div class="desc">Persist message to session.</div>
+  </div>
+  <div class="node api">
+    <div class="node-label">API</div>
+    <h3>/api/generate/script</h3>
+    <div class="desc">Script generation (sections, hooks, CTAs).</div>
+  </div>
+  <div class="node api">
+    <div class="node-label">API</div>
+    <h3>/api/generate/seo</h3>
+    <div class="desc">SEO package: titles, description, tags, thumbnails, chapters, pinned comment.</div>
+  </div>
+  <div class="node api">
+    <div class="node-label">API</div>
+    <h3>/api/generate/social</h3>
+    <div class="desc">Social posts: X thread, Instagram caption, Facebook post.</div>
+  </div>
+  <div class="node api">
+    <div class="node-label">API</div>
+    <h3>/api/generate/video-analysis</h3>
+    <div class="desc">Video performance analysis: strengths, weaknesses, scores per category.</div>
+  </div>
+</div>
+
+<div class="node gen" style="margin-bottom:20px">
+  <div class="node-label">Generation (Shared)</div>
+  <h3>callLLM — src/lib/generation/llm.ts</h3>
+  <div class="desc">Single shared LLM wrapper used by all 5 generate routes. Each route passes its own CallLLMOptions (max_tokens, timeout, retries, empty fallback).</div>
+  <ul>
+    <li>Env vars: <code>KIMI_API_ENDPOINT</code>, <code>KIMI_MODEL</code>, <code>KIMI_API_KEY</code></li>
+    <li>Proxy routing: opt-in via <code>KIMI_USE_PROXY=true</code></li>
+    <li>Exports <code>parseJsonResponse&lt;T&gt;(content, fallback)</code> — strips markdown fences, falls back to typed default</li>
+    <li>Schemas: <code>src/lib/generation/schemas.ts</code> — shared Zod schemas merged per-route</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 4: SAVE TO BOARD & WORKSPACE BOARD -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Phase 4 &mdash; Save to Board &amp; Workspace Board</div>
+
+<div class="side-by-side">
+  <div>
+    <div class="node" style="margin-bottom:14px">
+      <h3>Save to Board Flow</h3>
+      <div class="desc">From video/article card save button:</div>
+      <ol style="font-size:0.78rem;color:var(--text-muted);padding-left:18px;line-height:1.7">
+        <li>Opens <code>BoardPicker</code> modal</li>
+        <li>User picks a board (or default "My Ideas")</li>
+        <li><code>handleSaveToBoard</code> writes item to Firestore <code>users/{uid}/boards/{boardId}/items</code></li>
+        <li>Firestore unavailable → fails silently with toast</li>
+        <li>Chat panel "Save all to board" uses localStorage directly (works regardless)</li>
+      </ol>
+    </div>
+    <div class="node hook">
+      <div class="node-label">Hook</div>
+      <h3>useBoardSave</h3>
+      <div class="desc">Save-to-board picker state + handlers for the discover page.</div>
+    </div>
+  </div>
+  <div>
+    <div class="node hook" style="margin-bottom:14px">
+      <div class="node-label">Hook</div>
+      <h3>useWorkspaceBoard (247 lines)</h3>
+      <div class="desc">Active workspace + card CRUD for discover page workspace pane.</div>
+      <ul>
+        <li>State: activeWorkspace, workspaceCards, isLoadingWorkspace, addMenuOpen, cardContextMenu, rightPane, chatInput</li>
+        <li>CRUD: loadWorkspaceCards, handleAddCard, handleDeleteCard, handleDuplicateCard, handleMoveToBoard, handleReferenceToBoard</li>
+        <li>Storage: Firestore (if signed in) + localStorage merge</li>
+      </ul>
+    </div>
+    <div class="node storage">
+      <div class="node-label">Storage</div>
+      <h3>Board Persistence</h3>
+      <div class="desc">Dual storage: Firestore → localStorage fallback.</div>
+      <ul>
+        <li><code>tubeforge_boards</code> — board metadata</li>
+        <li><code>tubeforge_cards_{boardId}</code> — cards per board</li>
+        <li>Firestore paths: <code>users/{uid}/boards/{boardId}</code></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 5: BOARDS PAGE -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Phase 5 &mdash; Boards Page (Kanban Canvas)</div>
+
+<div class="hook-map">
+  <h2>Hook Composition in /boards</h2>
+  <div class="hook-grid">
+    <div class="hook-card">
+      <div class="hook-name">useAuth()</div>
+      <div class="hook-consumer">→ user</div>
+    </div>
+    <div class="hook-card">
+      <div class="hook-name">useBoardsData({ onBoardDeleted })</div>
+      <div class="hook-file">src/hooks/useBoardsData.ts (178 lines)</div>
+      <div class="hook-consumer">→ boards, searchQuery, isCreating, newBoard*, isLoading, loadBoards, handleCreateBoard, handleDeleteBoard, filteredBoards</div>
+    </div>
+    <div class="hook-card">
+      <div class="hook-name">useBoardCards({ selectedBoard })</div>
+      <div class="hook-file">src/hooks/useBoardCards.ts (387 lines)</div>
+      <div class="hook-consumer">→ cards, loadCards, handleCardMove, handleDropFromDiscover, handleRemoveCard, handleDuplicateCard, handleAddNoteCard, handleUpdateCard, handleAddCard</div>
+    </div>
+    <div class="hook-card">
+      <div class="hook-name">useCardEditor({ selectedBoard, onUpdateCard })</div>
+      <div class="hook-file">src/hooks/useCardEditor.ts (58 lines)</div>
+      <div class="hook-consumer">→ editingCard, editTitle, editContent, handleStartEdit, handleCancelEdit, handleSaveEdit</div>
+    </div>
+    <div class="hook-card">
+      <div class="hook-name">useBoardChatPanel({ selectedBoard, onAddCard })</div>
+      <div class="hook-file">src/hooks/useBoardChatPanel.ts (73 lines)</div>
+      <div class="hook-consumer">→ chatOpen, chatCard, handleOpenChat, handleCloseChat, handleAddArtifactToBoard</div>
+    </div>
+  </div>
+</div>
+
+<div class="node page" style="margin-bottom:20px">
+  <div class="node-label">Page</div>
+  <h3>/boards &mdash; Orchestrator (376 lines, down from 861)</h3>
+  <div class="desc">Composes 4 hooks + renders JSX via BoardCanvas. Cards support drag-to-reposition, drag-from-discover-feed, duplicate, remove, and inline note editing. Chat panel accepts a card for context and can save generated scripts/social posts back as new cards.</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 6: CHANNEL ANALYTICS -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Phase 6 &mdash; Channel Analytics</div>
+
+<div class="side-by-side">
+  <div>
+    <div class="node page" style="margin-bottom:14px">
+      <div class="node-label">Page</div>
+      <h3>/channel</h3>
+      <div class="desc">Per-channel analytics view. Hook: <code>useChannelAnalyticsState</code></div>
+    </div>
+    <div class="node api">
+      <div class="node-label">API</div>
+      <h3>YouTube Channel APIs</h3>
+      <ul>
+        <li><code>/api/youtube/channel</code> — channel details</li>
+        <li><code>/api/youtube/channel-videos</code> — channel videos</li>
+        <li><code>/api/youtube/video</code> — single video</li>
+        <li><code>/api/youtube/transcript</code> — transcripts</li>
+      </ul>
+    </div>
+  </div>
+  <div>
+    <div class="node ext" style="margin-bottom:14px">
+      <div class="node-label">Lib</div>
+      <h3>channel-analytics.ts (296 lines)</h3>
+      <div class="desc">Pure helpers + types: ChannelVideo, ChannelInsights, ChannelStats, SeoPackage, getScoreColorClass, getGrade, getHealthScoreColor, getHealthScoreBg, generateSuggestions (82 lines), generateInsights (63 lines), extractChannelId, exportToCSV.</div>
+    </div>
+    <div class="node">
+      <h3>Channel Components</h3>
+      <ul>
+        <li>ChannelAnalytics.tsx (850 lines) — orchestrator</li>
+        <li>ChannelVideoCard.tsx — analytics-specific video card</li>
+        <li>ChannelVideoDetailModal.tsx (374 lines) — AI analysis + SEO boost</li>
+        <li>ChannelCharts.tsx — InsightsCharts, ViewsOverTimeChart</li>
+        <li>CompareModal.tsx — 2-video side-by-side comparison</li>
+        <li>FixVideoModal.tsx — "Fix this video" nav</li>
+        <li>StatCard.tsx, HealthScoreCard.tsx — leaf components</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 7: VOICE PROFILE -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Phase 7 &mdash; Voice Profile Builder</div>
+
+<div class="side-by-side">
+  <div class="node page">
+    <div class="node-label">Page</div>
+    <h3>/voice (685 lines, down from 889)</h3>
+    <div class="desc">Voice profile builder. 3 input methods: Paste Sample Text, Paste Video Links, Guided Chat.</div>
+    <ul>
+      <li>Hook: <code>useVoiceProfileBuilder</code> (172 lines)</li>
+      <li>Lib: <code>voice-analysis.ts</code> (98 lines) — analyzeText engine</li>
+      <li>Lib: <code>voice-questions.ts</code> — VOICE_QUESTIONS config</li>
+      <li>Components: InputSourceSelector, SourceCard, VoiceFingerprintCard, FeedbackForm, VersionHistory</li>
+    </ul>
+  </div>
+  <div class="node ext">
+    <div class="node-label">Lib</div>
+    <h3>voice-analysis.ts</h3>
+    <div class="desc">Text analysis engine. Detects:</div>
+    <ul>
+      <li>hookStyle (question/number/I-you/pattern interrupt)</li>
+      <li>tone (energetic/inspirational/authentic/conversational)</li>
+      <li>vocabulary (rich/accessible/simple)</li>
+      <li>humorLevel, ctaPattern (4 archetypes), sentenceLength</li>
+      <li>sampleSentences (first 3)</li>
+      <li>Plus extractVideoId (YouTube URL parser)</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 8: SETTINGS / PERFORMANCE -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Phase 8 &mdash; Settings &amp; Performance</div>
+
+<div class="page-flow">
+  <div class="node page">
+    <div class="node-label">Page</div>
+    <h3>/settings/performance</h3>
+    <div class="desc">Performance Dashboard + OAuth Connections + Score Calibration.</div>
+    <ul>
+      <li>Hook: <code>usePerformanceInsights</code>, <code>usePlatformConnections</code>, <code>useQualityScore</code></li>
+    </ul>
+  </div>
+  <div class="node api">
+    <div class="node-label">API</div>
+    <h3>/api/quality/feedback/insights</h3>
+    <div class="desc">Total generated content, tracked creators, platform breakdown, working/not-working insights.</div>
+  </div>
+  <div class="node api">
+    <div class="node-label">API</div>
+    <h3>/api/quality/feedback/calibrate</h3>
+    <div class="desc">Every 14 days: adjusts scoring weights based on content performance. "Run Calibration Now" button.</div>
+  </div>
+  <div class="node api">
+    <div class="node-label">API</div>
+    <h3>/api/quality/score</h3>
+    <div class="desc">Quality scoring endpoint.</div>
+  </div>
+</div>
+
+<div class="node" style="margin-bottom:20px">
+  <h3>OAuth Connections (Not Configured)</h3>
+  <div class="desc">YouTube, X, Instagram, Facebook — "Connect" shows error toast: "OAuth is not configured. Add credentials to enable."</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 9: AUXILIARY PAGES -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Phase 9 &mdash; Auxiliary Pages</div>
+
+<div class="page-flow">
+  <div class="node page">
+    <div class="node-label">Page</div>
+    <h3>/dashboard</h3>
+    <div class="desc">Dashboard overview page.</div>
+  </div>
+  <div class="node page">
+    <div class="node-label">Page</div>
+    <h3>/optimize (367 lines)</h3>
+    <div class="desc">SEO optimization page. Hook: <code>useOptimizePage</code>. Types: <code>src/lib/optimize-types.ts</code>.</div>
+  </div>
+  <div class="node page">
+    <div class="node-label">Page</div>
+    <h3>/analyze</h3>
+    <div class="desc">Video analysis page. Hook: <code>useAnalyzePage</code>. Helpers: <code>src/lib/analyze-helpers.ts</code>.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 10: STORAGE MAP -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Phase 10 &mdash; Storage Architecture</div>
+
+<div class="side-by-side">
+  <div class="node storage">
+    <div class="node-label">Storage</div>
+    <h3>Firestore (Primary)</h3>
+    <table class="data-table">
+      <tr><th>Path</th><th>Content</th></tr>
+      <tr><td><code>users/{uid}/boards/{boardId}</code></td><td>Board metadata</td></tr>
+      <tr><td><code>users/{uid}/boards/{boardId}/cards/{cardId}</code></td><td>Board cards</td></tr>
+      <tr><td><code>users/{uid}/boards/{boardId}/items/{itemId}</code></td><td>Saved feed items</td></tr>
+      <tr><td><code>users/{uid}/chat_sessions/{sessionId}</code></td><td>Chat sessions + messages</td></tr>
+      <tr><td><code>users/{uid}/voiceProfile/default</code></td><td>Voice profile fingerprint</td></tr>
+    </table>
+  </div>
+  <div class="node storage">
+    <div class="node-label">Storage</div>
+    <h3>localStorage (Fallback)</h3>
+    <table class="data-table">
+      <tr><th>Key</th><th>Content</th></tr>
+      <tr><td><code>tubeforge_boards</code></td><td>Board metadata</td></tr>
+      <tr><td><code>tubeforge_cards_{boardId}</code></td><td>Cards per board</td></tr>
+      <tr><td><code>tubeforge_blocklist</code></td><td>Hidden items/creators/languages</td></tr>
+      <tr><td><code>tubeforge_creators</code></td><td>Tracked creators</td></tr>
+      <tr><td><code>tubeforge_creator_lists</code></td><td>Creator list groups</td></tr>
+      <tr><td><code>tubeforge_streak</code></td><td>Daily streak data</td></tr>
+      <tr><td><code>discover_activeCategories</code></td><td>Active category filters</td></tr>
+      <tr><td><code>discover_customCategories</code></td><td>User-added categories</td></tr>
+      <tr><td><code>notifications_enabled</code></td><td>Settings toggle</td></tr>
+      <tr><td><code>auto_refresh</code></td><td>Settings toggle</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 11: EXTERNAL DATA SOURCES -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Phase 11 &mdash; External Data Sources</div>
+
+<div class="page-flow">
+  <div class="node ext">
+    <div class="node-label">External</div>
+    <h3>YouTube Data API v3</h3>
+    <div class="desc">Search videos, channel details, transcripts. Lib: <code>src/lib/youtube.ts</code>, <code>youtube-api.ts</code>, <code>youtube-parsers.ts</code>.</div>
+    <ul><li>Proxy fallback via <code>proxyFetch</code> (<code>src/lib/proxy.ts</code>)</li></ul>
+  </div>
+  <div class="node ext">
+    <div class="node-label">External</div>
+    <h3>Hacker News (Algolia API)</h3>
+    <div class="desc">Article feed. Lib: <code>src/lib/content/hackernews.ts</code>.</div>
+  </div>
+  <div class="node ext">
+    <div class="node-label">External</div>
+    <h3>DEV.to (Scraped)</h3>
+    <div class="desc">Article feed. Lib: <code>src/lib/content/index.ts</code>.</div>
+  </div>
+  <div class="node ext">
+    <div class="node-label">External</div>
+    <h3>Substack (Scraped)</h3>
+    <div class="desc">Article feed. Lib: <code>src/lib/content/index.ts</code>.</div>
+  </div>
+</div>
+
+<div class="node ext" style="margin-bottom:20px">
+  <div class="node-label">Lib</div>
+  <h3>Article Extraction — src/lib/content/article-extraction.ts</h3>
+  <div class="desc">HTML parsing: title, content, images, author, published date, entity decoding.</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 12: FULL ARCHITECTURE LAYERS -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Phase 12 &mdash; Architecture Layers</div>
+
+<div class="node" style="margin-bottom:20px">
+  <h3>Data Access Rules</h3>
+  <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-top:10px; font-size:0.78rem;">
+    <div style="background:var(--surface2);padding:12px;border-radius:8px">
+      <strong style="color:var(--accent)">Components</strong><br>
+      Pure rendering shells. Zero Firestore imports. Zero inline fetch().
+    </div>
+    <div style="background:var(--surface2);padding:12px;border-radius:8px">
+      <strong style="color:var(--accent2)">Hooks</strong><br>
+      All API calls. All Firestore access. All state management.
+    </div>
+    <div style="background:var(--surface2);padding:12px;border-radius:8px">
+      <strong style="color:var(--accent6)">Lib</strong><br>
+      Pure domain logic. API clients. Scoring. Formatting. No React imports.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 13: KEY METRICS -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-banner">Refactor Summary (62 iterations, 2026-07-07/09)</div>
+
+<table class="data-table">
+  <tr><th>Metric</th><th>Before</th><th>After</th><th>Change</th></tr>
+  <tr><td>Hooks created</td><td>~6</td><td>28</td><td>+22</td></tr>
+  <tr><td>Shared lib modules</td><td>~8</td><td>17</td><td>+9</td></tr>
+  <tr><td>discover/page.tsx</td><td>2,182 lines</td><td>952 lines</td><td>-56%</td></tr>
+  <tr><td>ChannelAnalytics.tsx</td><td>1,612 lines</td><td>850 lines</td><td>-47%</td></tr>
+  <tr><td>Voice page</td><td>889 lines</td><td>685 lines</td><td>-23%</td></tr>
+  <tr><td>Optimize page</td><td>598 lines</td><td>367 lines</td><td>-39%</td></tr>
+  <tr><td>boards/page.tsx</td><td>861 lines</td><td>376 lines</td><td>-56%</td></tr>
+  <tr><td>ContentChatPanel</td><td>444 lines</td><td>247 lines</td><td>-44%</td></tr>
+  <tr><td>Duplicated callLLM</td><td>6 copies</td><td>1 shared</td><td>-5</td></tr>
+  <tr><td>Duplicated KIMI_API_KEY reads</td><td>7 inline</td><td>2 canonical</td><td>-5</td></tr>
+  <tr><td>Duplicated PLATFORM_TYPES</td><td>4 arrays</td><td>1 shared const</td><td>-3</td></tr>
+  <tr><td>Firestore imports in components</td><td>Multiple</td><td>0</td><td>All in hooks</td></tr>
+  <tr><td>Inline fetch() in components</td><td>Multiple</td><td>0</td><td>All in hooks</td></tr>
+</table>
+
+<p style="text-align:center;color:var(--text-muted);margin-top:40px;font-size:0.75rem">TubeForge — Content Discovery &amp; Creation Platform</p>
+
+</div>
+</body>
+</html>

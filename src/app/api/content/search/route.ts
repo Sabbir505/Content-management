@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchContent, fetchTrendingContent } from "@/lib/content";
+import { searchContent, fetchTrendingContent, type ContentSource } from "@/lib/content";
+
+const VALID_SOURCES: ContentSource[] = ["hackernews", "devto", "substack"];
+
+function parseSources(raw: string[] | undefined): ContentSource[] | undefined {
+  if (!raw) return undefined;
+  const filtered = raw.filter((s): s is ContentSource =>
+    (VALID_SOURCES as string[]).includes(s)
+  );
+  return filtered.length > 0 ? filtered : undefined;
+}
 
 // Helper to wrap a promise with a timeout
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -24,7 +34,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("query");
     const type = searchParams.get("type") || "search"; // "search" or "trending"
-    const sources = searchParams.get("sources")?.split(",") || undefined;
+    const sources = parseSources(searchParams.get("sources")?.split(","));
     const rawTimeRange = searchParams.get("timeRange") || "week";
     const validTimeRanges = ["day", "week", "month", "year"] as const;
     const timeRange = validTimeRanges.includes(rawTimeRange as typeof validTimeRanges[number])
@@ -36,7 +46,7 @@ export async function GET(request: NextRequest) {
     if (type === "trending") {
       const bypassCache = searchParams.get("fresh") === "true";
       const results = await withTimeout(
-        fetchTrendingContent(sources as any, limit, bypassCache),
+        fetchTrendingContent(sources, limit, bypassCache),
         20000,
         "Trending content fetch"
       );
@@ -56,7 +66,7 @@ export async function GET(request: NextRequest) {
     const results = await withTimeout(
       searchContent({
         query,
-        sources: sources as any,
+        sources,
         limit,
         timeRange,
         bypassCache: searchParams.get("fresh") === "true",
@@ -72,7 +82,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Content search error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Failed to fetch content" },
+      { success: false, error: "Failed to fetch content" },
       { status: 500 }
     );
   }

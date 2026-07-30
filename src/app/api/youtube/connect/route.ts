@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyFetch } from "@/lib/proxy";
-
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
+import { YOUTUBE_API_KEY } from "@/lib/youtube-api";
+import { guardApiKey } from "@/lib/api-helpers";
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,10 +11,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Access token is required" }, { status: 400 });
     }
 
-    if (!YOUTUBE_API_KEY) {
-      console.error("YOUTUBE_API_KEY is not set");
-      return NextResponse.json({ success: false, error: "YouTube API key not configured" }, { status: 500 });
-    }
+    const guard = await guardApiKey(YOUTUBE_API_KEY, "YOUTUBE_API_KEY");
+    if (guard) return guard;
 
     const url = `https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails,statistics&mine=true&key=${YOUTUBE_API_KEY}`;
     console.log("Fetching YouTube channel data for access token");
@@ -31,7 +29,14 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const errorData = await response.text();
       console.error("YouTube API error:", response.status, errorData);
-      return NextResponse.json({ success: false, error: `YouTube API error: ${response.status}` }, { status: 500 });
+      // 401 = the user's OAuth access token is invalid/expired — surface it as
+      // 401 so the client knows to re-auth rather than treating it as a server
+      // fault. Other upstream failures stay 500.
+      const status = response.status === 401 ? 401 : 500;
+      const message = response.status === 401
+        ? "Your Google session has expired. Reconnect your YouTube account."
+        : `YouTube API error: ${response.status}`;
+      return NextResponse.json({ success: false, error: message }, { status });
     }
 
     const data = await response.json();
@@ -54,6 +59,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: channelData });
   } catch (error) {
     console.error("Channel connection error:", error);
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
   }
 }

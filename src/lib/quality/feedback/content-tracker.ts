@@ -30,7 +30,7 @@ export async function getTrackedContent(
     hasPublishedUrl?: boolean;
   }
 ): Promise<ContentTrackingEntry[]> {
-  let q = query(
+  const q = query(
     collection(db, "contentTracking"),
     where("userId", "==", userId),
     orderBy("generationDate", "desc")

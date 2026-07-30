@@ -4,6 +4,7 @@ import type { GoogleTrendsResult } from "../types";
 import * as cache from "../cache";
 
 const TRENDS_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
+const FALLBACK_CACHE_TTL = 60 * 1000; // 1 minute — don't cache failures for long
 const PYTHON_TIMEOUT = 15000; // 15 seconds
 
 function getPythonScriptPath(): string {
@@ -96,7 +97,9 @@ export async function fetchGoogleTrends(
   } catch (error) {
     console.warn(`Google Trends fetch failed for "${keyword}":`, error);
     const fallback = getFallbackResult(keyword);
-    cache.set(cacheKey, fallback, TRENDS_CACHE_TTL);
+    // Cache the fallback only briefly so a transient failure doesn't
+    // suppress real trends data for 6 hours.
+    cache.set(cacheKey, fallback, FALLBACK_CACHE_TTL);
     return fallback;
   }
 }

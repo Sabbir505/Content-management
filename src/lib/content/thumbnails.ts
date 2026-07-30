@@ -20,7 +20,6 @@ export function getFaviconUrl(url: string, size = 256): string {
 export function getSourceIconUrl(source: string): string {
   const icons: Record<string, string> = {
     hackernews: "https://cdn.simpleicons.org/ycombinator/FF6600",
-    reddit: "https://cdn.simpleicons.org/reddit/FF4500",
     devto: "https://cdn.simpleicons.org/devdotto/0A0A0A",
     substack: "https://cdn.simpleicons.org/substack/FF6719",
   };
@@ -30,12 +29,12 @@ export function getSourceIconUrl(source: string): string {
 /**
  * Get the best available thumbnail for a content item.
  * Priority:
- * 1. Actual thumbnail from the API (Reddit images, DEV.to cover images, etc.)
+ * 1. Actual thumbnail from the API (DEV.to cover images, etc.)
  * 2. High-quality favicon via Google favicon service
  * 3. Source-specific branded icon
  */
 export function getBestThumbnail(url: string, source: string, existingThumbnail?: string): string {
-  // If we already have a real thumbnail (Reddit image, DEV.to cover, etc.), use it
+  // If we already have a real thumbnail (DEV.to cover, etc.), use it
   if (existingThumbnail && existingThumbnail.startsWith("http")) {
     return existingThumbnail;
   }
@@ -56,7 +55,6 @@ export function getBestThumbnail(url: string, source: string, existingThumbnail?
 export function getPlaceholderGradient(source: string): string {
   const gradients: Record<string, string> = {
     hackernews: "from-orange-50 to-orange-100",
-    reddit: "from-red-50 to-red-100",
     devto: "from-gray-50 to-gray-100",
     substack: "from-orange-50 to-orange-100",
   };

@@ -2,6 +2,29 @@ const isServer = typeof window === "undefined";
 
 const COMMON_PROXY_PORTS = [7890, 7897, 1080, 10809, 8080, 8118];
 
+// Domains that are typically blocked in China and should use proxy first
+const PROXY_FIRST_DOMAINS = [
+  "googleapis.com",
+  "youtube.com",
+  "youtu.be",
+  "google.com",
+  "gstatic.com",
+  "ggpht.com",
+  "ytimg.com",
+  "substack.com",
+  "algolia.com",
+  "firebaseio.com",
+];
+
+function shouldUseProxyFirst(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return PROXY_FIRST_DOMAINS.some((domain) => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`));
+  } catch {
+    return false;
+  }
+}
+
 async function checkPortActive(port: number): Promise<boolean> {
   if (!isServer) return false;
 
@@ -75,10 +98,52 @@ export async function getProxyUrl(): Promise<string | undefined> {
 
 export async function proxyFetch(url: string, init?: RequestInit & { timeout?: number }): Promise<Response> {
   const timeout = init?.timeout || 15000;
+
+  // SSRF guard: reject private/loopback/non-http targets before fetching.
+  // Dynamically imported so the Node-only 'dns' dependency of
+  // url-validation never enters the client bundle (proxy.ts is shared
+  // with client code via getProxyUrl).
+  if (isServer) {
+    const { validateUrl } = await import("@/lib/url-validation");
+    const validated = await validateUrl(url);
+    if (!validated.valid) {
+      throw new Error(`Blocked URL: ${validated.error}`);
+    }
+  }
+
+  const useProxyFirst = isServer && shouldUseProxyFirst(url);
+
+  // For blocked domains (Google/YouTube in China), try proxy first to avoid long timeouts
+  if (useProxyFirst) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    try {
+      const { ProxyAgent, fetch: undiciFetch } = await import("undici");
+      const proxyUrl = await getProxyUrl();
+
+      if (proxyUrl) {
+        const dispatcher = new ProxyAgent(proxyUrl);
+        const response = await undiciFetch(url, {
+          ...init,
+          dispatcher,
+          signal: controller.signal,
+        } as unknown as Parameters<typeof undiciFetch>[1]);
+        clearTimeout(timeoutId);
+        return response as unknown as Response;
+      }
+    } catch (proxyError) {
+      clearTimeout(timeoutId);
+      if (proxyError instanceof Error && proxyError.name === "AbortError") {
+        throw new Error(`Request timeout after ${timeout}ms`);
+      }
+      // Proxy failed, fall through to direct fetch
+    }
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-  // Always try direct fetch first — proxy is optional
+  // Try direct fetch first (or as fallback after proxy fails)
   try {
     const response = await fetch(url, {
       ...init,
@@ -104,16 +169,16 @@ export async function proxyFetch(url: string, init?: RequestInit & { timeout?: n
           const response = await undiciFetch(url, {
             ...init,
             dispatcher,
-            signal: controller2.signal as any,
-          } as any);
+            signal: controller2.signal,
+          } as unknown as Parameters<typeof undiciFetch>[1]);
           clearTimeout(timeoutId2);
           return response as unknown as Response;
         }
 
         const response = await undiciFetch(url, {
           ...init,
-          signal: controller2.signal as any,
-        } as any);
+          signal: controller2.signal,
+        } as unknown as Parameters<typeof undiciFetch>[1]);
         clearTimeout(timeoutId2);
         return response as unknown as Response;
       } catch (proxyError) {

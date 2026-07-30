@@ -6,7 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { useAuth } from "@/hooks/useAuth";
+import { PLATFORM_TYPES } from "@/lib/quality/types";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+const PLATFORM_LABELS: Record<string, string> = {
+  youtube: "YouTube",
+  x: "X / Twitter",
+  instagram: "Instagram",
+  facebook: "Facebook",
+};
 
 const CREATOR_TYPES = [
   { value: "solo", label: "Solo YouTuber", description: "Just me creating content" },
@@ -24,13 +33,6 @@ const NICHES = [
   "Business",
   "Gaming",
   "Other",
-];
-
-const PLATFORMS = [
-  { value: "youtube", label: "YouTube" },
-  { value: "x", label: "X / Twitter" },
-  { value: "instagram", label: "Instagram" },
-  { value: "facebook", label: "Facebook" },
 ];
 
 export default function OnboardingPage() {
@@ -78,6 +80,7 @@ export default function OnboardingPage() {
           onboardingComplete: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
+          // PLACEHOLDER for billing: replace with real tier/credits once the billing system lands
           tier: "starter",
           creditsUsed: 0,
           creditsLimit: 300,
@@ -103,90 +106,124 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-lg">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">
+    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] px-4 py-8">
+      <Card className="w-full max-w-lg bg-[#1a1a1a] border-[#2a2a2a]">
+        <CardHeader className="text-center space-y-3">
+          <div className="flex items-center justify-center gap-2 pt-1">
+            {[1, 2, 3].map((s) => (
+              <div
+                key={s}
+                className={cn(
+                  "h-1.5 rounded-full transition-colors",
+                  s === step ? "w-8 bg-emerald-400" : s < step ? "w-4 bg-[#3a3a3a]" : "w-4 bg-[#2a2a2a]"
+                )}
+              />
+            ))}
+          </div>
+          <CardTitle className="text-2xl font-bold text-white">
             {step === 1 && "What kind of creator are you?"}
             {step === 2 && "What's your niche?"}
             {step === 3 && "Where do you want to post?"}
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-[#888]">
             Step {step} of 3
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {step === 1 && (
-            <div className="space-y-4">
-              {CREATOR_TYPES.map((type) => (
-                <button
-                  key={type.value}
-                  type="button"
-                  onClick={() => setCreatorType(type.value)}
-                  className={`flex flex-col items-start rounded-lg border-2 p-4 w-full text-left transition-colors ${
-                    creatorType === type.value
-                      ? "border-blue-600 bg-blue-50 text-blue-700"
-                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  <span className="font-semibold">{type.label}</span>
-                  <span className="text-sm text-gray-500">{type.description}</span>
-                </button>
-              ))}
+            <div className="space-y-3">
+              {CREATOR_TYPES.map((type) => {
+                const selected = creatorType === type.value;
+                return (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setCreatorType(type.value)}
+                    className={cn(
+                      "flex flex-col items-start rounded-lg border p-4 w-full text-left transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a1a]",
+                      selected
+                        ? "border-emerald-400 bg-emerald-400/10"
+                        : "border-[#2a2a2a] bg-[#0a0a0a] hover:border-[#3a3a3a] hover:bg-[#1a1a1a]"
+                    )}
+                  >
+                    <span className={cn("font-semibold", selected ? "text-white" : "text-[#ccc]")}>
+                      {type.label}
+                    </span>
+                    <span className="text-sm text-[#888]">{type.description}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
 
           {step === 2 && (
-            <div className="grid grid-cols-3 gap-3">
-              {NICHES.map((n) => (
-                <button
-                  key={n}
-                  onClick={() => toggleNiche(n)}
-                  className={`rounded-lg border-2 p-3 text-sm font-medium transition-colors ${
-                    selectedNiches.includes(n)
-                      ? "border-blue-600 bg-blue-50 text-blue-700"
-                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {NICHES.map((n) => {
+                const selected = selectedNiches.includes(n);
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => toggleNiche(n)}
+                    className={cn(
+                      "rounded-lg border p-3 text-sm font-medium transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a1a]",
+                      selected
+                        ? "border-emerald-400 bg-emerald-400/10 text-white"
+                        : "border-[#2a2a2a] bg-[#0a0a0a] text-[#ccc] hover:border-[#3a3a3a] hover:bg-[#1a1a1a]"
+                    )}
+                  >
+                    {n}
+                  </button>
+                );
+              })}
             </div>
           )}
 
           {step === 3 && (
             <div className="space-y-3">
-              {PLATFORMS.map((platform) => (
-                <button
-                  key={platform.value}
-                  type="button"
-                  onClick={() => togglePlatform(platform.value)}
-                  className={`flex items-center gap-3 rounded-lg border-2 p-3 w-full text-left transition-colors ${
-                    selectedPlatforms.includes(platform.value)
-                      ? "border-blue-600 bg-blue-50 text-blue-700"
-                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  <div className={`w-5 h-5 rounded flex items-center justify-center border-2 ${
-                    selectedPlatforms.includes(platform.value)
-                      ? "border-blue-600 bg-blue-600"
-                      : "border-gray-300"
-                  }`}>
-                    {selectedPlatforms.includes(platform.value) && (
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
+              {PLATFORM_TYPES.map((platform) => {
+                const selected = selectedPlatforms.includes(platform);
+                return (
+                  <button
+                    key={platform}
+                    type="button"
+                    onClick={() => togglePlatform(platform)}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg border p-3 w-full text-left transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a1a]",
+                      selected
+                        ? "border-emerald-400 bg-emerald-400/10"
+                        : "border-[#2a2a2a] bg-[#0a0a0a] hover:border-[#3a3a3a] hover:bg-[#1a1a1a]"
                     )}
-                  </div>
-                  <span className="font-medium">{platform.label}</span>
-                </button>
-              ))}
+                  >
+                    <div
+                      className={cn(
+                        "w-5 h-5 rounded flex items-center justify-center border-2 transition-colors",
+                        selected ? "border-emerald-400 bg-emerald-400" : "border-[#3a3a3a]"
+                      )}
+                    >
+                      {selected && (
+                        <svg className="w-3 h-3 text-[#0a0a0a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    <span className={cn("font-medium", selected ? "text-white" : "text-[#ccc]")}>
+                      {PLATFORM_LABELS[platform]}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
 
           <div className="flex gap-3 pt-4">
             {step > 1 && (
-              <Button variant="outline" onClick={handleBack} className="flex-1">
+              <Button
+                variant="outline"
+                onClick={handleBack}
+                disabled={isLoading}
+                className="flex-1 border-[#2a2a2a] bg-transparent text-[#ccc] hover:bg-[#0a0a0a] hover:text-white hover:border-[#3a3a3a] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
                 Back
               </Button>
             )}
@@ -198,7 +235,7 @@ export default function OnboardingPage() {
                 (step === 3 && selectedPlatforms.length === 0) ||
                 isLoading
               }
-              className="flex-1"
+              className="flex-1 bg-emerald-400 text-[#0a0a0a] hover:bg-emerald-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {isLoading ? "Saving..." : step === 3 ? "Complete" : "Next"}
             </Button>

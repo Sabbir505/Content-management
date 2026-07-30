@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
+import { proxyFetch } from "@/lib/proxy";
+import { YOUTUBE_API_KEY } from "@/lib/youtube-api";
+import { guardApiKey } from "@/lib/api-helpers";
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,17 +14,39 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!YOUTUBE_API_KEY) {
-      return NextResponse.json(
-        { success: false, error: "YouTube API key not configured" },
-        { status: 500 }
-      );
-    }
+    const guard = await guardApiKey(YOUTUBE_API_KEY, "YOUTUBE_API_KEY");
+    if (guard) return guard;
 
-    const response = await fetch(
+    const response = await proxyFetch(
       `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoId}&key=${YOUTUBE_API_KEY}`,
-      { next: { revalidate: 3600 } }
-    );
+      {
+        headers: { Accept: "application/json" },
+        timeout: 10000,
+      }
+    ).catch((error) => {
+      console.error("YouTube API fetch failed:", error);
+      return null;
+    });
+
+    if (!response) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          id: videoId,
+          title: "",
+          channelTitle: "",
+          channelId: "",
+          viewCount: 0,
+          likeCount: 0,
+          commentCount: 0,
+          thumbnail: "",
+          publishedAt: "",
+          duration: "",
+          description: "",
+          tags: [],
+        },
+      });
+    }
 
     if (!response.ok) {
       return NextResponse.json(
@@ -65,7 +88,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to fetch video details",
+        error: "Failed to fetch video details",
       },
       { status: 500 }
     );

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { shouldCalibrate, runCalibration } from "@/lib/quality/feedback/calibration";
+import { validateUserAccess } from "@/lib/api-auth";
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,6 +11,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const authError = await validateUserAccess(request, userId);
+    if (authError) return authError;
 
     const canCalibrate = await shouldCalibrate(userId);
     if (!canCalibrate) {

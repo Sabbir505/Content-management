@@ -1,5 +1,22 @@
 # TubeForge Project Audit Report
 
+> **⚠️ Point-in-time report — most findings are now resolved.**
+> This was a snapshot audit. Many items listed below have since been fixed; see
+> `BUGS-FIXED.md` for the verified fix status. Specifically, the issues flagged
+> here that are **no longer accurate** include:
+> - **#3** (` Tier` onboarding typo) — the field is now `tier: "starter"` (no
+>   leading space) in `src/app/onboarding/page.tsx`.
+> - **#4 / #5 / #13** (fragile `parseInt(selectedOutlier)`, platform/source
+>   mismatch, dead filter logic) — filtering moved to
+>   `src/hooks/useDiscoverFilters.ts`; outlier min now uses an explicit
+>   `getOutlierMin()` map in `src/lib/discovery/time-periods.ts`, and
+>   platform→source mapping uses `platformsToSources()`.
+> - **#7** (Boards API client-SDK auth) — the `/api/boards/**` routes this
+>   referred to were deleted; board data now lives in the discover workspace.
+>
+> Read the sections below as historical context, not current state. For the
+> current security/auth posture, see `BUGS-FIXED.md`.
+
 ## Summary
 
 The project builds successfully (`next build` passes with no TypeScript errors). However, there are several bugs, logical issues, code quality problems, and dead code across the codebase.

@@ -5,7 +5,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase";
-import type { PlatformConnection, PlatformType } from "../types";
+import { PLATFORM_TYPES, type PlatformConnection, type PlatformType } from "../types";
 
 interface ConnectionData {
   connected: boolean;
@@ -52,17 +52,17 @@ function toPlatformConnection(
 export async function getUserConnections(
   userId: string
 ): Promise<PlatformConnection[]> {
-  const docRef = doc(db, "platformConnections", userId);
+  const docRef = doc(db, "users", userId, "platformConnections", "default");
   const docSnap = await getDoc(docRef);
 
   if (!docSnap.exists()) {
-    return (["youtube", "x", "instagram", "facebook"] as PlatformType[]).map(
+    return PLATFORM_TYPES.map(
       (p) => toPlatformConnection(p, defaultConnection())
     );
   }
 
   const data = docSnap.data() as UserConnectionsDoc;
-  return (["youtube", "x", "instagram", "facebook"] as PlatformType[]).map(
+  return PLATFORM_TYPES.map(
     (p) => toPlatformConnection(p, data.connections[p] || defaultConnection())
   );
 }
@@ -72,7 +72,7 @@ export async function connectPlatform(
   platform: PlatformType,
   connectionData: Omit<ConnectionData, "connected" | "connectedAt">
 ): Promise<void> {
-  const docRef = doc(db, "platformConnections", userId);
+  const docRef = doc(db, "users", userId, "platformConnections", "default");
   const docSnap = await getDoc(docRef);
 
   const now = new Date().toISOString();
@@ -108,18 +108,24 @@ export async function disconnectPlatform(
   userId: string,
   platform: PlatformType
 ): Promise<void> {
-  const docRef = doc(db, "platformConnections", userId);
-  await updateDoc(docRef, {
-    [`connections.${platform}`]: defaultConnection(),
-    updatedAt: new Date().toISOString(),
-  });
+  const docRef = doc(db, "users", userId, "platformConnections", "default");
+  // Use setDoc with merge so disconnect doesn't throw if the doc was never created.
+  await setDoc(
+    docRef,
+    {
+      userId,
+      connections: { [platform]: defaultConnection() },
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
 }
 
 export async function getConnectionToken(
   userId: string,
   platform: PlatformType
 ): Promise<string | null> {
-  const docRef = doc(db, "platformConnections", userId);
+  const docRef = doc(db, "users", userId, "platformConnections", "default");
   const docSnap = await getDoc(docRef);
 
   if (!docSnap.exists()) return null;

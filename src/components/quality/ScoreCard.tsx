@@ -1,6 +1,6 @@
 "use client";
 
-import type { ScoredOutput, ScoreGrade } from "@/lib/quality/types";
+import type { ScoredOutput } from "@/lib/quality/types";
 import { cn } from "@/lib/utils";
 import { ScoreGradeBadge } from "./ScoreGradeBadge";
 import { ScoreBreakdown } from "./ScoreBreakdown";
@@ -23,7 +23,7 @@ function getOverallBarColor(score: number): string {
   return "bg-red-500";
 }
 
-function getThresholdLabel(score: number, grade: ScoreGrade): string {
+function getThresholdLabel(score: number): string {
   if (score >= 90) return "Excellent — ready to publish";
   if (score >= 80) return "Strong — good to publish";
   if (score >= 70) return "Good — consider suggestions";
@@ -74,7 +74,7 @@ export function ScoreCard<T>({
           "text-sm font-medium",
           score.passedThreshold ? "text-green-600" : "text-orange-600"
         )}>
-          {getThresholdLabel(score.score, score.grade)}
+          {getThresholdLabel(score.score)}
         </span>
       </div>
 

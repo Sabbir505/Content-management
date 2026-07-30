@@ -1,26 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 import { validateUserAccess } from "@/lib/api-auth";
-import { doc, setDoc, getDoc, collection, getDocs, query, orderBy, serverTimestamp } from "firebase/firestore";
-import { getYouTubeClient } from "@/lib/youtube-client";
-import { calculateOutlierScore, estimateHookType, estimateStructure } from "@/lib/outlier";
+import { doc, setDoc, collection, getDocs, query, orderBy, serverTimestamp } from "firebase/firestore";
+import { proxyFetch } from "@/lib/proxy";
+import { YOUTUBE_API_KEY } from "@/lib/youtube-api";
 import type { TrackedCreator } from "@/types/creator";
+
+async function fetchChannelFromDataApi(channelId: string) {
+  if (!YOUTUBE_API_KEY) throw new Error("YouTube API key not configured");
+  const url = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelId}&key=${YOUTUBE_API_KEY}`;
+  const response = await proxyFetch(url, { headers: { Accept: "application/json" }, timeout: 10000 });
+  if (!response.ok) throw new Error(`YouTube API error: ${response.status}`);
+  const data = await response.json();
+  if (!data.items || data.items.length === 0) throw new Error("Channel not found");
+  return data.items[0];
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, channelUrl } = body;
+    const { userId, channelUrl, channelId: directChannelId } = body;
 
     if (!userId) {
       return NextResponse.json({ success: false, error: "Missing userId" }, { status: 400 });
     }
 
-    const authError = validateUserAccess(request, userId);
+    const authError = await validateUserAccess(request, userId);
     if (authError) return authError;
 
-    let channelId: string | null = body.channelId || null;
+    let channelId: string | null = directChannelId || null;
 
-    // If channelUrl is provided, extract channel ID from it
     if (channelUrl && !channelId) {
       channelId = extractChannelId(channelUrl);
     }
@@ -29,10 +38,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Could not extract channel ID" }, { status: 400 });
     }
 
-    // Fetch channel info from YouTube
-    const yt = await getYouTubeClient();
-    const channel = await yt.getChannel(channelId);
-    const metadata = (channel as any).metadata;
+    const channel = await fetchChannelFromDataApi(channelId);
+    const snippet = channel.snippet || {};
+    const stats = channel.statistics || {};
 
     const creatorId = channelId;
     const creatorRef = doc(db, "users", userId, "creators", creatorId);
@@ -40,12 +48,12 @@ export async function POST(request: NextRequest) {
     const creatorData: Omit<TrackedCreator, "id"> = {
       userId,
       channelId,
-      channelTitle: metadata.title || channelId,
-      thumbnail: metadata.avatar?.[0]?.url || "",
-      subscriberCount: parseInt(metadata.subscriber_count?.toString() || "0", 10),
-      videoCount: parseInt(metadata.total_videos?.toString() || "0", 10),
-      description: metadata.description || "",
-      customUrl: metadata.custom_url || "",
+      channelTitle: snippet.title || channelId,
+      thumbnail: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || "",
+      subscriberCount: parseInt(stats.subscriberCount || "0", 10),
+      videoCount: parseInt(stats.videoCount || "0", 10),
+      description: snippet.description || "",
+      customUrl: snippet.customUrl || "",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -55,6 +63,31 @@ export async function POST(request: NextRequest) {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+
+    // Ensure an "All following" list exists and add this creator to it
+    const listsRef = collection(db, "users", userId, "creatorLists");
+    const listsSnapshot = await getDocs(listsRef);
+    const allFollowingList = listsSnapshot.docs.find((d) => d.data().name === "All following");
+    if (!allFollowingList) {
+      const newListRef = doc(listsRef);
+      await setDoc(newListRef, {
+        userId,
+        name: "All following",
+        description: "Creators you are tracking",
+        creatorIds: [creatorId],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      const existingIds: string[] = allFollowingList.data().creatorIds || [];
+      if (!existingIds.includes(creatorId)) {
+        await setDoc(
+          doc(db, "users", userId, "creatorLists", allFollowingList.id),
+          { creatorIds: [...existingIds, creatorId], updatedAt: serverTimestamp() },
+          { merge: true }
+        );
+      }
+    }
 
     return NextResponse.json({ success: true, data: { id: creatorId, ...creatorData } });
   } catch (error) {
@@ -73,14 +106,10 @@ function extractChannelId(url: string): string | null {
 
   for (const pattern of patterns) {
     const match = url.match(pattern);
-    if (match) {
-      return match[1];
-    }
+    if (match) return match[1];
   }
 
-  if (url.startsWith("UC") && url.length > 20) {
-    return url;
-  }
+  if (url.startsWith("UC") && url.length > 20) return url;
 
   return null;
 }
@@ -94,7 +123,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Missing userId" }, { status: 400 });
     }
 
-    const authError = validateUserAccess(request, userId);
+    const authError = await validateUserAccess(request, userId);
     if (authError) return authError;
 
     const creatorsSnapshot = await getDocs(

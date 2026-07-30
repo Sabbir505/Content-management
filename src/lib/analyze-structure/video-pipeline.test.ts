@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   parseISODuration,
   cleanTranscript,
@@ -86,13 +86,13 @@ describe("Video Pipeline", () => {
         { text: "Beat three", start_time_seconds: 50, end_time_seconds: 65, word_count: 2 },
       ];
 
-      const beats = segmentIntoBeats(segments, 65);
+      const beats = segmentIntoBeats(segments);
       expect(beats.length).toBeGreaterThan(0);
       expect(beats[0].text).toContain("Beat one");
     });
 
     it("should handle empty segments", () => {
-      const beats = segmentIntoBeats([], 0);
+      const beats = segmentIntoBeats([]);
       expect(beats).toHaveLength(0);
     });
   });

@@ -4,7 +4,6 @@ import { getProxyUrl } from "../proxy";
 import type {
   TimedSegment,
   TranscriptQuality,
-  VideoPipelineInput,
 } from "./types";
 
 // Parse ISO 8601 duration like PT14M32S to seconds
@@ -137,7 +136,7 @@ export function scoreTranscriptQuality(segments: TimedSegment[]): TranscriptQual
 }
 
 // Simple time-based beat segmentation (V1: no embeddings)
-export function segmentIntoBeats(segments: TimedSegment[], durationSeconds: number): TimedSegment[] {
+export function segmentIntoBeats(segments: TimedSegment[]): TimedSegment[] {
   if (segments.length === 0) return [];
 
   const beats: TimedSegment[] = [];
@@ -198,7 +197,7 @@ export async function analyzeVideo(videoId: string): Promise<{
   const rawSegments = await fetchTranscript(videoId);
   const cleaned = cleanTranscript(rawSegments);
   const transcriptQuality = scoreTranscriptQuality(cleaned);
-  const beats = segmentIntoBeats(cleaned, durationSeconds);
+  const beats = segmentIntoBeats(cleaned);
 
   return {
     segments: cleaned,

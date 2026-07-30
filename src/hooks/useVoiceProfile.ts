@@ -13,7 +13,6 @@ export function useVoiceProfile() {
 
   useEffect(() => {
     if (!user) {
-      setIsLoading(false);
       return;
     }
 
@@ -50,5 +49,5 @@ export function useVoiceProfile() {
     ].join(". ");
   }
 
-  return { voiceProfile, isLoading, formatVoiceForPrompt };
+  return { voiceProfile, isLoading: isLoading && !!user, formatVoiceForPrompt };
 }

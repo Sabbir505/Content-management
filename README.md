@@ -1,36 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Outlierly (TubeForge)
 
-## Getting Started
+Content discovery and creation tool for creators. Surfaces outlier-performing
+videos and articles across YouTube, Hacker News, DEV.to, and Substack; lets you
+block, filter, and track what you see; and provides an LLM-powered chat panel to
+turn what you find into scripts, social posts, and headline variations.
 
-First, run the development server:
+> **Note on naming:** the UI brand is **Outlierly**, but the internal package
+> name (`tubeforge`), storage keys, cookies, and window events stay as
+> `tubeforge` for backward compatibility. Don't rename them.
+
+## Tech stack
+
+- **Next.js 16** (App Router) + **React 19** + **TypeScript** (strict)
+- **Firebase** — Auth (email/password + Google) + Firestore
+- **Tailwind CSS v4** + **shadcn/ui** (`@base-ui/react`)
+- **TanStack React Query** for server state
+- **Zod** for validation
+- Scraping: `undici` (proxy-aware fetch), `youtube-transcript`, `youtubei.js`,
+  `scrape-youtube`. (Browser-based scraping via `puppeteer-extra`/`playwright`
+  is available but the only active content sources are Hacker News, DEV.to, and
+  Substack.)
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Production build / preview:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build
+npm run start
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Lint: `npm run lint`. Type-check: `npx tsc --noEmit`.
 
-## Learn More
+## Environment variables
 
-To learn more about Next.js, take a look at the following resources:
+Copy `.env.local.example` to `.env.local` and fill in. Required keys:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Var | Purpose |
+|-----|---------|
+| Firebase config | `NEXT_PUBLIC_FIREBASE_*` (apiKey, authDomain, projectId, etc.) |
+| `YOUTUBE_API_KEY` | YouTube Data API v3 (server-only) |
+| `KIMI_API_ENDPOINT` | LLM endpoint URL |
+| `KIMI_API_KEY` | LLM bearer token |
+| `KIMI_MODEL` | Default model id |
+| `KIMI_USE_PROXY` | `true` to route LLM calls through the detected proxy |
+| `HTTPS_PROXY` / `HTTP_PROXY` | Outbound proxy for `proxyFetch` (auto-detected on common local ports otherwise) |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Never commit `.env.local` (it is gitignored).
 
-## Deploy on Vercel
+## Routes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Route | Purpose |
+|-------|---------|
+| `/` | Home — onboarding status, daily streak, quick nav |
+| `/discover` | Main research workspace (feed, filters, creators/lists/channel tabs, workspace board) |
+| `/analyze` | Structure analysis results (video/article) |
+| `/optimize` | SEO optimizer |
+| `/voice` | Voice profile builder |
+| `/channel` | Per-channel analytics |
+| `/dashboard` | Dashboard |
+| `/settings/performance` | Performance insights + platform connections + score calibration |
+| `/onboarding` | New-user onboarding wizard |
+| `/auth/login`, `/auth/signup` | Firebase auth |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+API routes live under `/api/*` (YouTube, content, generation, chat, quality/feedback, llm).
+
+## Architecture
+
+- **`app/`** — Next.js routes (pages + API routes). Business logic belongs in `lib/`.
+- **`components/`** — React components. `components/ui/` is shadcn/ui only (no custom logic).
+- **`hooks/`** — one custom hook per file, returns an object. All API calls and
+  Firestore access go through hooks (no inline `fetch()` in components).
+- **`lib/`** — shared utilities, API clients, helpers. No React components.
+- **`types/`** — TypeScript interfaces and types. No runtime code.
+
+See `PLATFORM_GUIDE.md` for the full feature/data-flow reference and
+`CLAUDE.md` / `AGENTS.md` for coding standards.
+
+## Deployment
+
+Build must pass before deploying: `npm run build` succeeds locally. Configure
+all environment variables in the host. Netlify: use the `next` adapter with the
+build command `npm run build`.

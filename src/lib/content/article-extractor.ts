@@ -54,7 +54,7 @@ export function extractArticleFromHTML(html: string, url: string): ArticleConten
   // Try to extract main content
   const articleElement =
     doc.querySelector("article") ||
-    doc.querySelector("[role='main'") ||
+    doc.querySelector("[role='main']") ||
     doc.querySelector("main") ||
     doc.querySelector(".article-content") ||
     doc.querySelector(".post-content") ||

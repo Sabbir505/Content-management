@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,17 +47,9 @@ const LANGUAGE_OPTIONS = [
 interface VideoFiltersProps {
   filters: TrendingFilter;
   onFiltersChange: (filters: TrendingFilter) => void;
-  onSearch: (query: string) => void;
 }
 
-export function VideoFilters({ filters, onFiltersChange, onSearch }: VideoFiltersProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    onSearch(searchQuery);
-  }
-
+export function VideoFilters({ filters, onFiltersChange }: VideoFiltersProps) {
   return (
     <Card className="mb-6">
       <CardContent className="p-4 space-y-4">

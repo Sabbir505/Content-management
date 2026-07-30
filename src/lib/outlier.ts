@@ -3,6 +3,56 @@ export function calculateOutlierScore(videoViews: number, channelAvgViews: numbe
   return parseFloat((videoViews / channelAvgViews).toFixed(1));
 }
 
+/**
+ * Calculate a subscriber-weighted outlier score.
+ * Small channels get a bonus because virality is harder with fewer subscribers.
+ * Formula: outlierScore * (1 + log10(max(subs, 1)) / 10)
+ * Examples:
+ *   - 1K subs: multiplier ~1.3x
+ *   - 100K subs: multiplier ~1.5x
+ *   - 1M subs: multiplier ~1.6x
+ *   - 10M subs: multiplier ~1.7x
+ */
+export function calculateSubscriberWeightedOutlier(
+  outlierScore: number,
+  subscriberCount: number
+): number {
+  const subs = Math.max(subscriberCount, 1);
+  const multiplier = 1 + Math.log10(subs) / 10;
+  return parseFloat((outlierScore * multiplier).toFixed(1));
+}
+
+/**
+ * Calculate a niche-baseline-adjusted outlier score.
+ * Normalizes the outlier against the niche average, so "viral" means relative
+ * to the niche, not just the channel.
+ */
+export function calculateNicheAdjustedOutlier(
+  outlierScore: number,
+  nicheBaseline: number,
+  channelAvgViews: number
+): number {
+  if (nicheBaseline <= 0 || channelAvgViews <= 0) return outlierScore;
+  // If the channel already performs above niche average, their outlier is more impressive
+  const nicheRatio = channelAvgViews / nicheBaseline;
+  const adjustment = Math.sqrt(Math.max(nicheRatio, 0.1));
+  return parseFloat((outlierScore * adjustment).toFixed(1));
+}
+
+/**
+ * Calculate view velocity trend: views per hour since last fetch.
+ * Positive = accelerating, negative = decelerating.
+ */
+export function calculateVelocityTrend(
+  currentViews: number,
+  previousViews: number,
+  hoursSinceFetch: number
+): number {
+  if (hoursSinceFetch <= 0) return 0;
+  const viewDelta = currentViews - previousViews;
+  return Math.round(viewDelta / hoursSinceFetch);
+}
+
 export function estimateHookType(title: string): string {
   const t = title.toLowerCase();
   if (/^why\s/.test(t) || /\?/.test(t)) return "Question";

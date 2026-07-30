@@ -12,16 +12,16 @@ export function CorrelationInsight({ insights, type }: CorrelationInsightProps) 
 
   const title = type === "working" ? "What's Working For You" : "What's Not Working";
   const icon = type === "working" ? "✓" : "✗";
-  const textColor = type === "working" ? "text-green-700" : "text-red-700";
+  const textColor = type === "working" ? "text-emerald-400" : "text-red-400";
 
   return (
     <div className="space-y-2">
-      <h4 className="font-semibold text-sm">{title}</h4>
+      <h4 className="font-semibold text-sm text-white">{title}</h4>
       <ul className="space-y-1.5">
         {insights.slice(0, 5).map((insight, i) => (
           <li key={i} className="flex items-start gap-2 text-sm">
             <span className={textColor}>{icon}</span>
-            <span className="text-gray-700">{insight.insight}</span>
+            <span className="text-[#ccc]">{insight.insight}</span>
           </li>
         ))}
       </ul>

@@ -9,14 +9,12 @@ interface QuotaExceededErrorProps {
   retryAfter?: number;
   onRetry?: () => void;
   hasCachedResults?: boolean;
-  onViewCached?: () => void;
 }
 
 export function QuotaExceededError({
   retryAfter,
   onRetry,
   hasCachedResults = false,
-  onViewCached,
 }: QuotaExceededErrorProps) {
   const formatTimeRemaining = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
@@ -31,25 +29,25 @@ export function QuotaExceededError({
   const timeRemaining = retryAfter ? formatTimeRemaining(retryAfter) : "midnight PST";
 
   return (
-    <Card className="border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 shadow-lg">
+    <Card className="border border-[#2a2a2a] bg-[#1a1a1a] shadow-lg">
       <CardContent className="p-0">
         {/* Header */}
-        <div className="bg-amber-100 px-6 py-4 border-b border-amber-200">
+        <div className="bg-[#0a0a0a] px-6 py-4 border-b border-[#2a2a2a]">
           <div className="flex items-center gap-3">
-            <div className="bg-amber-200 rounded-full p-2">
-              <AlertTriangle className="w-5 h-5 text-amber-600" />
+            <div className="bg-[#2a2a2a] rounded-full p-2">
+              <AlertTriangle className="w-5 h-5 text-[#ccc]" />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-amber-900">
+                <h3 className="text-lg font-bold text-white">
                   YouTube API Quota Exceeded
                 </h3>
-                <Badge className="bg-amber-200 text-amber-800 border-amber-300 hover:bg-amber-200">
+                <Badge className="bg-[#2a2a2a] text-[#888] border-[#3a3a3a] hover:bg-[#2a2a2a]">
                   Temporary
                 </Badge>
               </div>
-              <p className="text-amber-700 text-sm mt-1">
-                Daily search limit reached — quota resets in <span className="font-semibold">{timeRemaining}</span>
+              <p className="text-[#888] text-sm mt-1">
+                Daily search limit reached — quota resets in <span className="font-semibold text-white">{timeRemaining}</span>
               </p>
             </div>
           </div>
@@ -59,32 +57,32 @@ export function QuotaExceededError({
         <div className="px-6 py-5">
           {/* Info cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-white rounded-lg p-4 border border-amber-100 shadow-sm">
+            <div className="bg-[#0a0a0a] rounded-lg p-4 border border-[#2a2a2a]">
               <div className="flex items-center gap-2 mb-2">
-                <Clock className="w-4 h-4 text-amber-500" />
-                <span className="font-medium text-gray-800">Resets Daily</span>
+                <Clock className="w-4 h-4 text-[#ccc]" />
+                <span className="font-medium text-white">Resets Daily</span>
               </div>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-[#888]">
                 Quota resets at midnight Pacific time (8-9 AM UTC)
               </p>
             </div>
 
-            <div className="bg-white rounded-lg p-4 border border-amber-100 shadow-sm">
+            <div className="bg-[#0a0a0a] rounded-lg p-4 border border-[#2a2a2a]">
               <div className="flex items-center gap-2 mb-2">
-                <Database className="w-4 h-4 text-green-500" />
-                <span className="font-medium text-gray-800">Cached Results</span>
+                <Database className="w-4 h-4 text-emerald-400" />
+                <span className="font-medium text-white">Cached Results</span>
               </div>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-[#888]">
                 Search results are cached for 30 minutes — try similar keywords
               </p>
             </div>
 
-            <div className="bg-white rounded-lg p-4 border border-amber-100 shadow-sm">
+            <div className="bg-[#0a0a0a] rounded-lg p-4 border border-[#2a2a2a]">
               <div className="flex items-center gap-2 mb-2">
-                <RefreshCw className="w-4 h-4 text-blue-500" />
-                <span className="font-medium text-gray-800">Auto-Retry</span>
+                <RefreshCw className="w-4 h-4 text-[#ccc]" />
+                <span className="font-medium text-white">Auto-Retry</span>
               </div>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-[#888]">
                 Page will work normally once quota resets
               </p>
             </div>
@@ -93,16 +91,16 @@ export function QuotaExceededError({
           {/* Actions */}
           <div className="flex items-center gap-4">
             {hasCachedResults && (
-              <div className="flex items-center gap-2 text-green-700 bg-green-50 px-4 py-2 rounded-lg border border-green-200">
+              <div className="flex items-center gap-2 text-emerald-400 bg-[#0a0a0a] px-4 py-2 rounded-lg border border-[#2a2a2a]">
                 <Database className="w-4 h-4" />
-                <span className="font-medium">Showing cached results below</span>
+                <span className="font-medium text-sm">Showing cached results below</span>
               </div>
             )}
             {onRetry && (
               <Button
                 variant="outline"
                 onClick={onRetry}
-                className="border-amber-300 text-amber-700 hover:bg-amber-100 hover:border-amber-400"
+                className="border-[#3a3a3a] text-white hover:bg-[#2a2a2a] hover:border-[#3a3a3a] cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Try Again

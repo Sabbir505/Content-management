@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { proxyFetch } from "@/lib/proxy";
+import { YOUTUBE_API_KEY, fetchYouTubeApi } from "@/lib/youtube-api";
+import { guardApiKey } from "@/lib/api-helpers";
 
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
+interface YouTubeChannelResponse {
+  id: string;
+  snippet?: {
+    title: string;
+    description: string;
+    customUrl?: string;
+    thumbnails: { high?: { url: string }; medium?: { url: string }; default?: { url: string } };
+  };
+  statistics?: { viewCount?: string; subscriberCount?: string; videoCount?: string };
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,29 +24,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!YOUTUBE_API_KEY) {
-      return NextResponse.json(
-        { success: false, error: "YouTube API key not configured" },
-        { status: 500 }
-      );
-    }
+    const guard = await guardApiKey(YOUTUBE_API_KEY, "YOUTUBE_API_KEY");
+    if (guard) return guard;
 
-    const response = await proxyFetch(
-      `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${channelId}&key=${YOUTUBE_API_KEY}`,
-      {
-        headers: { Accept: "application/json" },
-        timeout: 10000,
-      }
+    const data = await fetchYouTubeApi<YouTubeChannelResponse>(
+      `channels?part=snippet,statistics&id=${channelId}`
     );
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { success: false, error: `YouTube API error: ${response.status}` },
-        { status: 500 }
-      );
-    }
-
-    const data = await response.json();
 
     if (!data.items || data.items.length === 0) {
       return NextResponse.json(
@@ -56,12 +49,15 @@ export async function GET(request: NextRequest) {
         description: channel.snippet?.description || "",
         thumbnail: thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || "",
         customUrl: channel.snippet?.customUrl || "",
+        subscriberCount: parseInt(channel.statistics?.subscriberCount || "0", 10),
+        videoCount: parseInt(channel.statistics?.videoCount || "0", 10),
+        viewCount: parseInt(channel.statistics?.viewCount || "0", 10),
       },
     });
   } catch (error) {
     console.error("Channel details error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Internal server error" },
+      { success: false, error: "Internal server error" },
       { status: 500 }
     );
   }

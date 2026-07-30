@@ -5,7 +5,6 @@ import type { VideoWithOutlier } from "@/types/video";
 // These map typical score ranges to 0-100 scale
 const SOURCE_BASELINES: Record<string, { typicalMax: number; typicalMedian: number }> = {
   hackernews: { typicalMax: 500, typicalMedian: 50 },
-  reddit: { typicalMax: 5000, typicalMedian: 200 },
   devto: { typicalMax: 100, typicalMedian: 10 },
   substack: { typicalMax: 200, typicalMedian: 20 },
 };
@@ -30,6 +29,7 @@ function normalizeSourceScore(source: string, rawScore: number): number {
  */
 function getAgeHours(publishedAt: string): number {
   const published = new Date(publishedAt).getTime();
+  if (!Number.isFinite(published)) return 1; // Invalid date: treat as fresh to avoid NaN poisoning
   const now = Date.now();
   return Math.max((now - published) / (1000 * 60 * 60), 0.01); // Min 0.01h to avoid division by zero
 }
@@ -64,8 +64,7 @@ function calculateVelocityScore(normalizedScore: number, ageHours: number): numb
  */
 function calculateEngagementQuality(
   score: number,
-  commentCount: number,
-  source: string
+  commentCount: number
 ): number {
   if (score <= 0 || commentCount <= 0) return 0;
 
@@ -75,8 +74,8 @@ function calculateEngagementQuality(
   // Scale and cap: 0.1 comments per point = strong signal
   const qualityScore = Math.min(commentRatio * 50, 100);
 
-  // Boost for sources with naturally lower comment ratios (Reddit)
-  const sourceMultiplier = source === "reddit" ? 1.5 : 1.0;
+  // Source multiplier (no special boost needed)
+  const sourceMultiplier = 1.0;
 
   return safeNumber(Math.min(qualityScore * sourceMultiplier, 100));
 }
@@ -100,8 +99,7 @@ export function calculateContentDiscoveryScore(item: ContentItem): number {
   // 2. Engagement quality: comment-to-score ratio (30%)
   const engagementQuality = calculateEngagementQuality(
     item.score,
-    item.commentCount || 0,
-    item.source
+    item.commentCount || 0
   );
 
   // 3. Normalized score (20%)
@@ -124,36 +122,52 @@ export function calculateContentDiscoveryScore(item: ContentItem): number {
  * Calculate a unified discovery score for YouTube videos.
  *
  * Weights:
- * - Outlier score (virality relative to channel): 35% — your existing best signal
- * - Engagement rate (comments + likes per view): 25% — quality of engagement
- * - View velocity (views per hour): 25% — rising trends
+ * - Outlier score (virality relative to channel): 30% — best signal of exceptional content
+ * - Subscriber-weighted outlier bonus: 10% — rewards small creator virality
+ * - Engagement rate (comments + likes per view): 20% — quality of engagement
+ * - View velocity (views per hour): 20% — rising trends
+ * - Velocity trend (acceleration/deceleration): 5% — momentum indicator
  * - Recency boost: 15% — fresh content
  */
 export function calculateVideoDiscoveryScore(video: VideoWithOutlier): number {
   const ageHours = getAgeHours(video.publishedAt);
 
-  // 1. Outlier score: views relative to channel average (35%)
-  // Cap at 10x for scoring purposes
-  const outlierWeight = Math.min(video.outlierScore / 10, 1);
+  // 1. Base outlier score: views relative to channel average (30%)
+  // Use subscriber-weighted outlier if available, otherwise raw outlier
+  const effectiveOutlier = video.subscriberWeightedOutlier ?? video.outlierScore;
+  const outlierWeight = Math.min(effectiveOutlier / 50, 1);
   const outlierScore = outlierWeight * 100;
 
-  // 2. Engagement rate: comments + likes per 1000 views (25%)
+  // 2. Subscriber-weighted bonus (10%)
+  // Small channels that go viral get extra credit
+  const subscriberBonus = video.subscriberCount
+    ? Math.min(Math.log10(Math.max(video.subscriberCount, 1)) * 10, 50)
+    : 0;
+  const subscriberScore = subscriberBonus;
+
+  // 3. Engagement rate: comments + likes per 1000 views (20%)
   const commentRate = video.viewCount > 0 ? (video.commentCount / video.viewCount) * 1000 : 0;
   const likeRate = video.viewCount > 0 ? (video.likeCount / video.viewCount) * 1000 : 0;
-  // Engagement score: combine comment rate (weighted higher) and like rate
   const engagementScore = Math.min(commentRate * 5 + likeRate * 0.5, 100);
 
-  // 3. View velocity: views per hour, log-scaled (25%)
+  // 4. View velocity: views per hour, log-scaled (20%)
   const velocity = video.viewCount / ageHours;
   const velocityScore = Math.min(Math.log10(velocity + 1) * 12, 100);
 
-  // 4. Recency boost: half-life of 48 hours for videos (15%)
+  // 5. Velocity trend: acceleration/deceleration (5%)
+  const trendScore = video.velocityTrend
+    ? Math.min(Math.max(video.velocityTrend / 100, -50), 50) + 50 // Normalize to 0-100
+    : 50; // Neutral if no trend data
+
+  // 6. Recency boost: half-life of 48 hours for videos (15%)
   const recencyBoost = calculateRecencyBoost(ageHours, 48) * 100;
 
   const discoveryScore =
-    outlierScore * 0.35 +
-    engagementScore * 0.25 +
-    velocityScore * 0.25 +
+    outlierScore * 0.30 +
+    subscriberScore * 0.10 +
+    engagementScore * 0.20 +
+    velocityScore * 0.20 +
+    trendScore * 0.05 +
     recencyBoost * 0.15;
 
   const result = Math.round(discoveryScore * 10) / 10;

@@ -1,19 +1,19 @@
 "use client";
 
-import { useState, Suspense, useEffect, useCallback, useMemo } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress, ProgressValue, ProgressLabel, ProgressTrack, ProgressIndicator } from "@/components/ui/progress";
-import { toast } from "sonner";
-import { useAuth } from "@/hooks/useAuth";
-import { collection, addDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import type { AnalyzeResult } from "@/lib/analyze-structure/types";
+import { Progress, ProgressLabel, ProgressTrack, ProgressIndicator } from "@/components/ui/progress";
+import { useAnalyzePage } from "@/hooks/useAnalyzePage";
+import { formatDate } from "@/lib/analyze-helpers";
+import { formatDuration } from "@/lib/youtube";
+import { formatCompactNumber } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import {
   RotateCcw,
   Copy,
@@ -34,205 +34,28 @@ import {
   Eye,
 } from "lucide-react";
 
-interface AnalysisError {
-  message: string;
-  canRetry: boolean;
-}
-
-function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  }
-  return `${minutes}:${secs.toString().padStart(2, "0")}`;
-}
-
-function formatNumber(num?: number): string {
-  if (num === undefined || num === null) return "N/A";
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
-  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
-  return num.toString();
-}
-
-function formatDate(dateString?: string): string {
-  if (!dateString) return "N/A";
-  try {
-    return new Date(dateString).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return "N/A";
-  }
-}
-
 function AnalyzePageContent() {
-  const { user } = useAuth();
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const videoId = searchParams.get("videoId");
-  const contentId = searchParams.get("contentId");
-
-  const [result, setResult] = useState<AnalyzeResult | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<AnalysisError | null>(null);
-  const [expandedBeats, setExpandedBeats] = useState(false);
-
-  const analyzeVideo = useCallback(async (id: string) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`${window.location.origin}/api/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceType: "video", videoId: id }),
-      });
-
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || "Failed to analyze video");
-      }
-
-      setResult(data.data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to analyze video";
-      setError({ message, canRetry: true });
-      toast.error(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const analyzeArticle = useCallback(async (url: string) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`${window.location.origin}/api/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceType: "article", articleUrl: url }),
-      });
-
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || "Failed to analyze article");
-      }
-
-      setResult(data.data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to analyze article";
-      setError({ message, canRetry: true });
-      toast.error(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (videoId) {
-      analyzeVideo(videoId);
-    } else if (contentId) {
-      analyzeArticle(contentId);
-    }
-  }, [videoId, contentId, analyzeVideo, analyzeArticle]);
-
-  const handleRetry = useCallback(() => {
-    if (videoId) {
-      analyzeVideo(videoId);
-    } else if (contentId) {
-      analyzeArticle(contentId);
-    }
-  }, [videoId, contentId, analyzeVideo, analyzeArticle]);
-
-  const handleCopy = useCallback(() => {
-    if (!result) return;
-
-    const { structural_breakdown, source_type } = result;
-    const summary = `# Structure Analysis
-
-## Hook
-**Type:** ${structural_breakdown.hook.type}
-**Technique:** ${structural_breakdown.hook.technique}
-${structural_breakdown.hook.exact_text ? `**Exact text:** "${structural_breakdown.hook.exact_text}"\n` : ""}**Why it works:** ${structural_breakdown.hook.why_it_works}
-
-## Intro
-**Approach:** ${structural_breakdown.intro.approach}
-**Viewer promise:** ${structural_breakdown.intro.viewer_promise}
-
-## Beats
-${structural_breakdown.beats.map((beat) => `${beat.beat_number}. **${beat.label}** — ${beat.purpose} (${beat.technique_used})`).join("\n")}
-
-## Outro
-**Style:** ${structural_breakdown.outro.style}
-**CTA type:** ${structural_breakdown.outro.cta_type}
-${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_breakdown.outro.cta_exact_phrase}"\n` : ""}
-
-## Overall
-**Format:** ${structural_breakdown.overall.dominant_format}
-**Pacing:** ${structural_breakdown.overall.pacing}
-**Tone:** ${structural_breakdown.overall.tone}
-**Replicability:** ${structural_breakdown.overall.replicability_score}/10
-**Best for:** ${structural_breakdown.overall.best_for_niches.join(", ") || "General"}
-`;
-
-    navigator.clipboard.writeText(summary);
-    toast.success("Analysis copied to clipboard");
-  }, [result]);
-
-  const handleExportJson = useCallback(() => {
-    if (!result) return;
-
-    const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `structure-analysis-${videoId || "article"}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success("Analysis exported as JSON");
-  }, [result, videoId]);
-
-  const handleSaveToBoard = useCallback(async () => {
-    if (!user) {
-      toast.error("You must be signed in to save analyses");
-      return;
-    }
-    if (!result) return;
-
-    try {
-      await addDoc(collection(db, "users", user.uid, "savedAnalyses"), {
-        sourceType: result.source_type,
-        structuralBreakdown: result.structural_breakdown,
-        sourceSpecific: result.source_specific,
-        sourceMetadata: result.source_metadata,
-        videoId: videoId || null,
-        articleUrl: contentId || null,
-        savedAt: new Date().toISOString(),
-      });
-      toast.success("Analysis saved to board");
-    } catch {
-      toast.error("Failed to save analysis");
-    }
-  }, [user, result, videoId, contentId]);
-
-  const visibleBeats = useMemo(() => {
-    if (!result) return [];
-    return expandedBeats ? result.structural_breakdown.beats : result.structural_breakdown.beats.slice(0, 4);
-  }, [result, expandedBeats]);
-
-  const hasMoreBeats = (result?.structural_breakdown.beats.length || 0) > 4;
+  const {
+    videoId,
+    contentId,
+    result,
+    isLoading,
+    error,
+    expandedBeats,
+    setExpandedBeats,
+    visibleBeats,
+    hasMoreBeats,
+    handleRetry,
+    handleCopy,
+    handleExportJson,
+    handleSaveToBoard,
+  } = useAnalyzePage();
 
   // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-[#0a0a0a]">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="mb-8">
             <Skeleton className="h-10 w-64 mb-2" />
@@ -261,24 +84,32 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
   // Error state
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-[#0a0a0a]">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Analyze Structure</h1>
-            <p className="text-gray-600">Something went wrong</p>
+            <h1 className="text-3xl font-bold text-white mb-2">Analyze Structure</h1>
+            <p className="text-[#888]">Something went wrong</p>
           </div>
 
-          <Card className="border-red-200 bg-red-50">
+          <Card className="border-red-400/30 bg-red-900/20">
             <CardContent className="p-6">
-              <p className="text-red-700">{error.message}</p>
+              <p className="text-red-400">{error.message}</p>
               <div className="flex gap-3 mt-4">
                 {error.canRetry && (
-                  <Button variant="outline" onClick={handleRetry}>
+                  <Button
+                    variant="outline"
+                    onClick={handleRetry}
+                    className="cursor-pointer transition-colors hover:border-[#3a3a3a] hover:text-white"
+                  >
                     <RotateCcw className="w-4 h-4 mr-2" />
                     Try Again
                   </Button>
                 )}
-                <Button variant="ghost" onClick={() => window.history.back()}>
+                <Button
+                  variant="ghost"
+                  onClick={() => window.history.back()}
+                  className="cursor-pointer transition-colors hover:bg-[#2a2a2a] hover:text-white"
+                >
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Go Back
                 </Button>
@@ -293,17 +124,25 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
   // No content selected
   if (!videoId && !contentId) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-[#0a0a0a]">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Analyze Structure</h1>
-            <p className="text-gray-600">Select content from the Discover page to analyze its structure</p>
+            <h1 className="text-3xl font-bold text-white mb-2">Analyze Structure</h1>
+            <p className="text-[#888]">Select content from the Discover page to analyze its structure</p>
           </div>
 
           <Card>
-            <CardContent className="p-6">
-              <p className="text-gray-500">No content selected for analysis.</p>
-              <Button variant="outline" className="mt-4" onClick={() => router.push("/discover")}>
+            <CardContent className="p-6 flex flex-col items-center text-center py-12">
+              <BarChart3 className="w-10 h-10 text-[#666] mb-4" />
+              <p className="text-[#888] mb-1">No content selected for analysis.</p>
+              <p className="text-sm text-[#666] mb-4">
+                Find a video or article on Discover, then open it here to break down its structure.
+              </p>
+              <Button
+                variant="outline"
+                className="cursor-pointer transition-colors hover:border-[#3a3a3a] hover:text-white"
+                onClick={() => router.push("/discover")}
+              >
                 Go to Discover
               </Button>
             </CardContent>
@@ -319,14 +158,19 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
   const { structural_breakdown, source_specific, source_metadata, source_type } = result;
   const videoMeta = source_type === "video" ? source_metadata.video : null;
   const articleMeta = source_type === "article" ? source_metadata.article : null;
+  const replicability = structural_breakdown.overall.replicability_score;
+  const scoreColor =
+    replicability >= 8 ? "text-emerald-400" : replicability >= 5 ? "text-[#888]" : "text-red-400";
+  const indicatorColor =
+    replicability >= 8 ? "bg-emerald-400" : replicability >= 5 ? "bg-[#888]" : "bg-red-400";
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0a0a0a]">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Structure Analysis</h1>
-          <p className="text-gray-600">Structural DNA breakdown of the selected content</p>
+          <h1 className="text-3xl font-bold text-white mb-2">Structure Analysis</h1>
+          <p className="text-[#888]">Structural DNA breakdown of the selected content</p>
         </div>
 
         {/* Source metadata card */}
@@ -334,7 +178,7 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row gap-6">
               {videoMeta?.thumbnail_url && (
-                <div className="relative w-full md:w-64 aspect-video rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
+                <div className="relative w-full md:w-64 aspect-video rounded-lg overflow-hidden flex-shrink-0 bg-[#1a1a1a]">
                   <Image
                     src={videoMeta.thumbnail_url}
                     alt={videoMeta.title || "Video thumbnail"}
@@ -347,23 +191,29 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-4 mb-3">
-                  <div>
+                  <div className="min-w-0">
                     <Badge variant="secondary" className="mb-2">
                       {source_type === "video" ? "YouTube Video" : "Article"}
                     </Badge>
-                    <h2 className="text-xl font-semibold text-gray-900">
+                    <h2 className="text-xl font-semibold text-white truncate">
                       {videoMeta?.title || articleMeta?.title || "Untitled"}
                     </h2>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button variant="outline" size="sm" onClick={handleRetry} disabled={isLoading}>
-                      <RotateCcw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRetry}
+                      disabled={isLoading}
+                      className="cursor-pointer transition-colors hover:border-[#3a3a3a] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RotateCcw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
                       Re-analyze
                     </Button>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
+                <div className="flex flex-wrap gap-4 text-sm text-[#888] mb-4">
                   {videoMeta?.channel_title && (
                     <div className="flex items-center gap-1.5">
                       <User className="w-4 h-4" />
@@ -385,7 +235,7 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
                   {videoMeta?.view_count !== undefined && (
                     <div className="flex items-center gap-1.5">
                       <Eye className="w-4 h-4" />
-                      {formatNumber(videoMeta.view_count)} views
+                      {formatCompactNumber(videoMeta.view_count)} views
                     </div>
                   )}
                   {source_type === "video" && source_specific.video && (
@@ -408,15 +258,30 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={handleCopy}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopy}
+                    className="cursor-pointer transition-colors hover:border-[#3a3a3a] hover:text-white"
+                  >
                     <Copy className="w-4 h-4 mr-2" />
                     Copy
                   </Button>
-                  <Button variant="outline" size="sm" onClick={handleExportJson}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportJson}
+                    className="cursor-pointer transition-colors hover:border-[#3a3a3a] hover:text-white"
+                  >
                     <Download className="w-4 h-4 mr-2" />
                     Export JSON
                   </Button>
-                  <Button variant="outline" size="sm" onClick={handleSaveToBoard}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSaveToBoard}
+                    className="cursor-pointer transition-colors hover:border-[#3a3a3a] hover:text-white"
+                  >
                     <Bookmark className="w-4 h-4 mr-2" />
                     Save
                   </Button>
@@ -430,24 +295,25 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
         <Tabs defaultValue="hook" className="space-y-6">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="hook">
-              <Sparkles className="w-4 h-4 mr-2" />
-              Hook
+              <Sparkles className="w-4 h-4 md:mr-2" />
+              <span className="hidden md:inline">Hook</span>
             </TabsTrigger>
             <TabsTrigger value="intro">
-              <Megaphone className="w-4 h-4 mr-2" />
-              Intro
+              <Megaphone className="w-4 h-4 md:mr-2" />
+              <span className="hidden md:inline">Intro</span>
             </TabsTrigger>
             <TabsTrigger value="beats">
-              <ListOrdered className="w-4 h-4 mr-2" />
-              Beats ({structural_breakdown.beats.length})
+              <ListOrdered className="w-4 h-4 md:mr-2" />
+              <span className="hidden md:inline">Beats ({structural_breakdown.beats.length})</span>
+              <span className="md:hidden">{structural_breakdown.beats.length}</span>
             </TabsTrigger>
             <TabsTrigger value="outro">
-              <Flag className="w-4 h-4 mr-2" />
-              Outro
+              <Flag className="w-4 h-4 md:mr-2" />
+              <span className="hidden md:inline">Outro</span>
             </TabsTrigger>
             <TabsTrigger value="overall">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Overall
+              <BarChart3 className="w-4 h-4 md:mr-2" />
+              <span className="hidden md:inline">Overall</span>
             </TabsTrigger>
           </TabsList>
 
@@ -455,7 +321,7 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-blue-500" />
+                  <Sparkles className="w-5 h-5 text-emerald-400" />
                   Hook
                 </CardTitle>
               </CardHeader>
@@ -464,14 +330,14 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
                   <Badge variant="secondary" className="capitalize">
                     {structural_breakdown.hook.type.replace("_", " ")}
                   </Badge>
-                  <span className="text-sm font-medium">{structural_breakdown.hook.technique}</span>
+                  <span className="text-sm font-medium text-[#ccc]">{structural_breakdown.hook.technique}</span>
                 </div>
                 {structural_breakdown.hook.exact_text && (
-                  <blockquote className="border-l-4 border-blue-500 pl-4 italic text-gray-700">
+                  <blockquote className="border-l-4 border-emerald-400 pl-4 italic text-[#ccc]">
                     &ldquo;{structural_breakdown.hook.exact_text}&rdquo;
                   </blockquote>
                 )}
-                <p className="text-sm text-gray-600">{structural_breakdown.hook.why_it_works}</p>
+                <p className="text-sm text-[#888]">{structural_breakdown.hook.why_it_works}</p>
               </CardContent>
             </Card>
           </TabsContent>
@@ -480,16 +346,16 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Megaphone className="w-5 h-5 text-blue-500" />
+                  <Megaphone className="w-5 h-5 text-emerald-400" />
                   Intro
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Approach:</span> {structural_breakdown.intro.approach}
+                <p className="text-sm text-[#888]">
+                  <span className="font-medium text-[#ccc]">Approach:</span> {structural_breakdown.intro.approach}
                 </p>
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Viewer Promise:</span> {structural_breakdown.intro.viewer_promise}
+                <p className="text-sm text-[#888]">
+                  <span className="font-medium text-[#ccc]">Viewer Promise:</span> {structural_breakdown.intro.viewer_promise}
                 </p>
               </CardContent>
             </Card>
@@ -499,32 +365,32 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <ListOrdered className="w-5 h-5 text-blue-500" />
+                  <ListOrdered className="w-5 h-5 text-emerald-400" />
                   Beats ({structural_breakdown.beats.length})
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {visibleBeats.map((beat) => (
-                  <div key={beat.beat_number} className="border rounded-lg p-4">
+                  <div key={beat.beat_number} className="border border-[#2a2a2a] rounded-lg p-4 transition-colors hover:border-[#3a3a3a]">
                     <div className="flex items-center gap-2 mb-2">
                       <Badge variant="outline">#{beat.beat_number}</Badge>
-                      <span className="font-medium">{beat.label}</span>
+                      <span className="font-medium text-[#ccc]">{beat.label}</span>
                     </div>
-                    <p className="text-sm text-gray-600 mb-1">
-                      <span className="font-medium">Purpose:</span> {beat.purpose}
+                    <p className="text-sm text-[#888] mb-1">
+                      <span className="font-medium text-[#ccc]">Purpose:</span> {beat.purpose}
                     </p>
-                    <p className="text-sm text-gray-600 mb-1">
-                      <span className="font-medium">Technique:</span> {beat.technique_used}
+                    <p className="text-sm text-[#888] mb-1">
+                      <span className="font-medium text-[#ccc]">Technique:</span> {beat.technique_used}
                     </p>
                     {beat.transition_to_next && (
-                      <p className="text-sm text-gray-500 italic">→ {beat.transition_to_next}</p>
+                      <p className="text-sm text-[#666] italic">→ {beat.transition_to_next}</p>
                     )}
                   </div>
                 ))}
                 {hasMoreBeats && (
                   <Button
                     variant="ghost"
-                    className="w-full"
+                    className="w-full cursor-pointer transition-colors hover:bg-[#2a2a2a] hover:text-white"
                     onClick={() => setExpandedBeats((prev) => !prev)}
                   >
                     {expandedBeats ? (
@@ -548,19 +414,19 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Flag className="w-5 h-5 text-blue-500" />
+                  <Flag className="w-5 h-5 text-emerald-400" />
                   Outro
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Style:</span> {structural_breakdown.outro.style}
+                <p className="text-sm text-[#888]">
+                  <span className="font-medium text-[#ccc]">Style:</span> {structural_breakdown.outro.style}
                 </p>
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">CTA Type:</span> {structural_breakdown.outro.cta_type}
+                <p className="text-sm text-[#888]">
+                  <span className="font-medium text-[#ccc]">CTA Type:</span> {structural_breakdown.outro.cta_type}
                 </p>
                 {structural_breakdown.outro.cta_exact_phrase && (
-                  <blockquote className="border-l-4 border-green-500 pl-4 italic text-gray-700">
+                  <blockquote className="border-l-4 border-emerald-400 pl-4 italic text-[#ccc]">
                     &ldquo;{structural_breakdown.outro.cta_exact_phrase}&rdquo;
                   </blockquote>
                 )}
@@ -572,7 +438,7 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-blue-500" />
+                  <BarChart3 className="w-5 h-5 text-emerald-400" />
                   Overall Assessment
                 </CardTitle>
               </CardHeader>
@@ -590,24 +456,24 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
                 </div>
 
                 <div>
-                  <Progress value={structural_breakdown.overall.replicability_score * 10}>
+                  <Progress value={replicability * 10}>
                     <div className="flex w-full justify-between">
                       <ProgressLabel>Replicability Score</ProgressLabel>
-                      <span className="text-sm text-muted-foreground tabular-nums">
-                        {structural_breakdown.overall.replicability_score}/10
+                      <span className={cn("text-sm tabular-nums font-medium", scoreColor)}>
+                        {replicability}/10
                       </span>
                     </div>
                     <ProgressTrack>
-                      <ProgressIndicator />
+                      <ProgressIndicator className={indicatorColor} />
                     </ProgressTrack>
                   </Progress>
                 </div>
 
-                <p className="text-sm text-gray-600">{structural_breakdown.overall.replicability_note}</p>
+                <p className="text-sm text-[#888]">{structural_breakdown.overall.replicability_note}</p>
 
                 {structural_breakdown.overall.best_for_niches.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    <span className="text-sm font-medium">Best for niches:</span>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <span className="text-sm font-medium text-[#ccc]">Best for niches:</span>
                     {structural_breakdown.overall.best_for_niches.map((niche) => (
                       <Badge key={niche} variant="outline" className="text-xs">
                         {niche}
@@ -626,7 +492,13 @@ ${structural_breakdown.outro.cta_exact_phrase ? `**CTA phrase:** "${structural_b
 
 export default function AnalyzePage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading...</div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+          <div className="text-[#888]">Loading...</div>
+        </div>
+      }
+    >
       <AnalyzePageContent />
     </Suspense>
   );

@@ -8,14 +8,14 @@ import { PerformanceDashboard } from "@/components/quality/PerformanceDashboard"
 import { PlatformConnectionCard } from "@/components/quality/PlatformConnectionCard";
 import { toast } from "sonner";
 import type { PerformanceInsights, PlatformConnection } from "@/lib/quality/types";
-
-const PLATFORMS = ["youtube", "x", "instagram", "facebook"] as const;
+import { PLATFORM_TYPES } from "@/lib/quality/types";
 
 export default function PerformanceInsightsPage() {
   const { user } = useAuth();
   const [insights, setInsights] = useState<PerformanceInsights | null>(null);
   const [connections, setConnections] = useState<PlatformConnection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCalibrating, setIsCalibrating] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -33,8 +33,7 @@ export default function PerformanceInsightsPage() {
           if (result.success) setInsights(result.data);
         }
 
-        // Fetch platform connections
-        const connectionPromises = PLATFORMS.map(async (platform) => {
+        const connectionPromises = PLATFORM_TYPES.map(async (platform) => {
           try {
             const res = await fetch(`/api/quality/connections/${platform}?userId=${uid}`);
             if (res.ok) {
@@ -69,7 +68,7 @@ export default function PerformanceInsightsPage() {
   }, [user]);
 
   async function handleConnect(platform: string) {
-    toast.info(`Connecting ${platform}... (OAuth flow not yet implemented)`);
+    toast.error(`${platform} OAuth is not configured. Add credentials to enable.`);
   }
 
   async function handleDisconnect(platform: string) {
@@ -91,13 +90,14 @@ export default function PerformanceInsightsPage() {
           )
         );
       }
-    } catch (error) {
+    } catch {
       toast.error(`Failed to disconnect ${platform}`);
     }
   }
 
   async function handleCalibrate() {
-    if (!user) return;
+    if (!user || isCalibrating) return;
+    setIsCalibrating(true);
     try {
       const response = await fetch("/api/quality/feedback/calibrate", {
         method: "POST",
@@ -111,8 +111,10 @@ export default function PerformanceInsightsPage() {
       } else {
         toast.info(result.data?.reason || "Not enough data for calibration yet");
       }
-    } catch (error) {
+    } catch {
       toast.error("Calibration failed");
+    } finally {
+      setIsCalibrating(false);
     }
   }
 
@@ -126,65 +128,78 @@ export default function PerformanceInsightsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0a0a0a]">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Performance Insights</h1>
-          <p className="text-gray-600">
-            See how your TubeForge-generated content performs across platforms
+          <h1 className="text-3xl font-bold mb-2 text-white">Performance Insights</h1>
+          <p className="text-[#888]">
+            See how your Outlierly-generated content performs across platforms
           </p>
         </div>
 
         <div className="grid gap-6">
-          {/* Performance Dashboard */}
           <PerformanceDashboard
             insights={insights || defaultInsights}
             isLoading={isLoading}
           />
 
-          {/* Platform Connections */}
-          <Card>
+          <Card className="bg-[#1a1a1a] border-[#2a2a2a]">
             <CardHeader>
-              <CardTitle>Analytics Connections</CardTitle>
+              <CardTitle className="text-white">Analytics Connections</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {PLATFORMS.map((platform) => {
-                const connection = connections.find(
-                  (c) => c.platform === platform
-                ) || {
-                  platform,
-                  connected: false,
-                  connectedAt: null,
-                  tokenExpiry: null,
-                  platformUserId: null,
-                  platformUsername: null,
-                };
+              {isLoading ? (
+                <div className="space-y-3">
+                  {PLATFORM_TYPES.map((platform) => (
+                    <div
+                      key={platform}
+                      className="h-16 rounded-lg bg-[#2a2a2a] animate-pulse"
+                    />
+                  ))}
+                </div>
+              ) : (
+                PLATFORM_TYPES.map((platform) => {
+                  const connection = connections.find(
+                    (c) => c.platform === platform
+                  ) || {
+                    platform,
+                    connected: false,
+                    connectedAt: null,
+                    tokenExpiry: null,
+                    platformUserId: null,
+                    platformUsername: null,
+                  };
 
-                return (
-                  <PlatformConnectionCard
-                    key={platform}
-                    connection={connection}
-                    onConnect={() => handleConnect(platform)}
-                    onDisconnect={() => handleDisconnect(platform)}
-                  />
-                );
-              })}
+                  return (
+                    <PlatformConnectionCard
+                      key={platform}
+                      connection={connection}
+                      onConnect={() => handleConnect(platform)}
+                      onDisconnect={() => handleDisconnect(platform)}
+                    />
+                  );
+                })
+              )}
             </CardContent>
           </Card>
 
-          {/* Calibration */}
-          <Card>
+          <Card className="bg-[#1a1a1a] border-[#2a2a2a]">
             <CardHeader>
-              <CardTitle>Score Calibration</CardTitle>
+              <CardTitle className="text-white">Score Calibration</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-sm text-gray-600">
-                Every 14 days, TubeForge adjusts scoring weights based on your
+              <p className="text-sm text-[#888]">
+                Every 14 days, Outlierly adjusts scoring weights based on your
                 content&apos;s real performance. This makes scores more accurate
                 for your specific content style over time.
               </p>
-              <Button onClick={handleCalibrate} variant="outline">
-                Run Calibration Now
+              <Button
+                onClick={handleCalibrate}
+                disabled={isCalibrating}
+                variant="outline"
+                className="bg-[#0a0a0a] border-[#3a3a3a] text-white hover:bg-[#2a2a2a] hover:border-[#3a3a3a] focus-visible:ring-2 focus-visible:ring-[#3a3a3a] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a1a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isCalibrating ? "Calibrating..." : "Run Calibration Now"}
               </Button>
             </CardContent>
           </Card>

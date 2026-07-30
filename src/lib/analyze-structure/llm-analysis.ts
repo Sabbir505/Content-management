@@ -7,92 +7,16 @@ import type {
   VideoSourceSpecific,
   ArticleSourceSpecific,
 } from "./types";
-import { getProxyUrl } from "../proxy";
+import { callLLM, type ApiMessage } from "../generation/llm";
 
-const API_URL = process.env.KIMI_API_ENDPOINT || "https://ai2.18.show/v1/chat/completions";
-const API_KEY = process.env.KIMI_API_KEY;
-const MODEL = process.env.KIMI_MODEL || "DeepSeek-V4-Pro";
-
-interface ApiMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
-interface ApiResponse {
-  choices: {
-    message: {
-      content: string;
-    };
-    finish_reason?: string;
-  }[];
-}
-
-async function callLLM(messages: ApiMessage[], temperature: number = 0.3): Promise<string> {
-  if (!API_KEY) {
-    throw new Error("KIMI_API_KEY not configured");
-  }
-
-  // The Kimi endpoint is directly reachable in most environments; the local proxy
-  // auto-detected by getProxyUrl() is flaky for this host and causes ECONNRESET /
-  // connect timeouts. Only route through the proxy if explicitly requested.
-  const useProxy = process.env.KIMI_USE_PROXY === "true";
-  const proxyUrl = useProxy ? await getProxyUrl() : undefined;
-  let fetchFn: typeof fetch = fetch;
-  if (proxyUrl) {
-    const { ProxyAgent, fetch: undiciFetch } = await import("undici");
-    const dispatcher = new ProxyAgent({
-      uri: proxyUrl,
-      connectTimeout: 30000,
-    });
-    fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      let url: string;
-      let options: RequestInit = {};
-      if (typeof input === "string") {
-        url = input;
-      } else if (input instanceof URL) {
-        url = input.toString();
-      } else {
-        url = input.url;
-        options = { method: input.method, headers: input.headers, body: input.body };
-      }
-      if (init) {
-        options = { ...options, ...init };
-        if (init.headers) {
-          const merged = new Headers(options.headers);
-          new Headers(init.headers).forEach((v, k) => merged.set(k, v));
-          options.headers = merged;
-        }
-      }
-      return undiciFetch(url, { ...options, dispatcher } as never) as unknown as Response;
-    }) as typeof fetch;
-  }
-
-  const response = await fetchFn(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature,
-      max_tokens: 6000,
-    }),
-    signal: AbortSignal.timeout(180000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
-  }
-
-  const data: ApiResponse = await response.json();
-  const choice = data.choices[0];
-  if (choice?.finish_reason === "length") {
-    throw new Error("Analysis response was truncated. The transcript or beats may be too long.");
-  }
-  return choice?.message?.content || "{}";
-}
+const LLM_OPTS = {
+  temperature: 0.3,
+  maxTokens: 6000,
+  timeoutMs: 180000,
+  maxRetries: 0,
+  emptyFallback: "{}",
+  throwOnTruncate: true,
+} as const;
 
 function buildSystemPrompt(): string {
   return `You are TubeForge's content analyst. Your job is to analyze any piece of
@@ -343,7 +267,7 @@ export async function analyzeStructureWithLLM(params: {
     },
   ];
 
-  const content = await callLLM(messages, 0.3);
+  const content = await callLLM(messages, LLM_OPTS);
   const structuralBreakdown = parseStructuralResponse(content);
 
   const sourceSpecific = {

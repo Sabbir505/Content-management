@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to analyze structure",
+        error: "Failed to analyze structure",
       },
       { status: 500 }
     );

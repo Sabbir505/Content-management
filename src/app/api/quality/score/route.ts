@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { NextRequest, NextResponse } from "next/server";
 import { scoreOutput } from "@/lib/quality/scorers/scorer-registry";
-import type { OutputType, ScoringContext } from "@/lib/quality/types";
+import { parseBody } from "@/lib/api-helpers";
 
 const scoreSchema = z.object({
   output: z.unknown(),
@@ -11,17 +11,10 @@ const scoreSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const parsed = scoreSchema.safeParse(body);
+    const validation = await parseBody(request, scoreSchema);
+    if (!validation.success) return validation.errorResponse;
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, error: parsed.error.issues.map((e: { message: string }) => e.message).join(", ") },
-        { status: 400 }
-      );
-    }
-
-    const { output, outputType, context } = parsed.data;
+    const { output, outputType, context } = validation.data;
 
     const score = scoreOutput(output, outputType, context || {});
     return NextResponse.json({ success: true, data: score });

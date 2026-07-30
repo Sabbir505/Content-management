@@ -25,9 +25,9 @@ export async function GET(request: NextRequest) {
     const query = request.nextUrl.searchParams.get("query");
     const niche = request.nextUrl.searchParams.get("niche") || "all";
     const rawTimeRange = request.nextUrl.searchParams.get("timeRange") || "week";
-    const validTimeRanges = ["day", "week", "month", "year"] as const;
+    const validTimeRanges = ["day", "week", "month", "3months", "year"] as const;
     const timeRange = validTimeRanges.includes(rawTimeRange as typeof validTimeRanges[number])
-      ? (rawTimeRange as "day" | "week" | "month" | "year")
+      ? (rawTimeRange as "day" | "week" | "month" | "3months" | "year")
       : "week";
     const language = (request.nextUrl.searchParams.get("language") || "any") as "any" | "en";
 
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Failed to search YouTube videos" },
+      { success: false, error: "Failed to search YouTube videos" },
       { status: 500 }
     );
   }
