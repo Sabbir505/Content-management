@@ -5,12 +5,18 @@ import {
   where,
   getDocs,
   Timestamp,
+  type Firestore,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { PERFORMANCE_WINDOWS } from "../constants";
 import { getTrackedContent } from "./content-tracker";
 import { getConnectionToken } from "./platform-connections";
 import type { PlatformType } from "../types";
+
+function ensureDb(): Firestore {
+  if (!db) throw new Error("Firestore is not configured. Set NEXT_PUBLIC_FIREBASE_* env vars.");
+  return db;
+}
 
 export async function pullYouTubeMetrics(
   videoId: string,
@@ -119,7 +125,7 @@ export async function pullAllDueMetrics(userId: string): Promise<void> {
 
       // Check if snapshot already exists for this window
       const q = query(
-        collection(db, "performanceSnapshots"),
+        collection(ensureDb(), "performanceSnapshots"),
         where("trackingEntryId", "==", entry.id),
         where("window", "==", window.name)
       );
@@ -135,7 +141,7 @@ export async function pullAllDueMetrics(userId: string): Promise<void> {
         const pullFn = pullFns[entry.platform];
         const metrics = await pullFn(platformId, token);
 
-        await addDoc(collection(db, "performanceSnapshots"), {
+        await addDoc(collection(ensureDb(), "performanceSnapshots"), {
           trackingEntryId: entry.id,
           window: window.name,
           fetchedAt: Timestamp.now(),

@@ -8,14 +8,20 @@ import {
   doc,
   orderBy,
   Timestamp,
+  type Firestore,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import type { ContentTrackingEntry, OutputType, PlatformType } from "../types";
 
+function ensureDb(): Firestore {
+  if (!db) throw new Error("Firestore is not configured. Set NEXT_PUBLIC_FIREBASE_* env vars.");
+  return db;
+}
+
 export async function trackPublishedContent(
   entry: Omit<ContentTrackingEntry, "id">
 ): Promise<string> {
-  const docRef = await addDoc(collection(db, "contentTracking"), {
+  const docRef = await addDoc(collection(ensureDb(), "contentTracking"), {
     ...entry,
     generationDate: Timestamp.now(),
   });
@@ -31,7 +37,7 @@ export async function getTrackedContent(
   }
 ): Promise<ContentTrackingEntry[]> {
   const q = query(
-    collection(db, "contentTracking"),
+    collection(ensureDb(), "contentTracking"),
     where("userId", "==", userId),
     orderBy("generationDate", "desc")
   );
@@ -72,7 +78,7 @@ export async function linkContentToUrl(
   trackingEntryId: string,
   publishedUrl: string
 ): Promise<void> {
-  const docRef = doc(db, "contentTracking", trackingEntryId);
+  const docRef = doc(ensureDb(), "contentTracking", trackingEntryId);
   await updateDoc(docRef, {
     publishedUrl,
     publishedAt: Timestamp.now(),

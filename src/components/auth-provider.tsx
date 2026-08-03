@@ -27,6 +27,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
+    // If Firebase isn't configured, skip auth and finish loading immediately.
+    if (!auth) {
+      if (!cancelled) setIsLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
       setUser(authUser);
 
@@ -67,4 +73,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth(): AuthContextType {
   return useContext(AuthContext);
 }
-

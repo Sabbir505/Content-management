@@ -20,7 +20,7 @@ export async function authFetch(
 
   if (typeof token === "string" && token.trim().length > 0) {
     resolvedToken = token;
-  } else if (auth.currentUser) {
+  } else if (auth?.currentUser) {
     resolvedToken = await auth.currentUser.getIdToken().catch(() => null);
   }
 

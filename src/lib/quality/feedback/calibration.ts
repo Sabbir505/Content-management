@@ -2,6 +2,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  type Firestore,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { computeCorrelations } from "./correlation-engine";
@@ -16,6 +17,11 @@ import {
 } from "../constants";
 import type { ScorerWeights } from "../types";
 import { incrementScorerVersion } from "../version";
+
+function ensureDb(): Firestore {
+  if (!db) throw new Error("Firestore is not configured. Set NEXT_PUBLIC_FIREBASE_* env vars.");
+  return db;
+}
 
 export async function shouldCalibrate(userId: string): Promise<boolean> {
   const tracked = await getTrackedContent(userId, { hasPublishedUrl: true });
@@ -68,7 +74,7 @@ export async function runCalibration(userId: string): Promise<ScorerWeights> {
     weights: newWeights,
   };
 
-  const docRef = doc(db, "scorerWeights", userId);
+  const docRef = doc(ensureDb(), "scorerWeights", userId);
   await setDoc(docRef, {
     ...updatedWeights,
     userId,
@@ -79,7 +85,7 @@ export async function runCalibration(userId: string): Promise<ScorerWeights> {
 }
 
 export async function getUserWeights(userId: string): Promise<ScorerWeights> {
-  const docRef = doc(db, "scorerWeights", userId);
+  const docRef = doc(ensureDb(), "scorerWeights", userId);
   const docSnap = await getDoc(docRef);
 
   if (!docSnap.exists()) {
@@ -94,7 +100,7 @@ export async function getUserWeights(userId: string): Promise<ScorerWeights> {
 }
 
 export async function resetToDefaults(userId: string): Promise<void> {
-  const docRef = doc(db, "scorerWeights", userId);
+  const docRef = doc(ensureDb(), "scorerWeights", userId);
   await setDoc(docRef, {
     userId,
     version: 1,

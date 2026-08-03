@@ -45,9 +45,10 @@ async function getGoogleAccessToken(): Promise<string> {
   const provider = new GoogleAuthProvider();
   provider.addScope("https://www.googleapis.com/auth/youtube.readonly");
 
-  const result = auth.currentUser
-    ? await reauthenticateWithPopup(auth.currentUser, provider)
-    : await signInWithPopup(auth, provider);
+  const authInstance = auth!; // non-null: this hook runs only when Firebase is configured
+  const result = authInstance.currentUser
+    ? await reauthenticateWithPopup(authInstance.currentUser, provider)
+    : await signInWithPopup(authInstance, provider);
 
   const credential = GoogleAuthProvider.credentialFromResult(result);
   const newToken = credential?.accessToken;

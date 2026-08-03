@@ -3,9 +3,15 @@ import {
   setDoc,
   getDoc,
   updateDoc,
+  type Firestore,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { PLATFORM_TYPES, type PlatformConnection, type PlatformType } from "../types";
+
+function ensureDb(): Firestore {
+  if (!db) throw new Error("Firestore is not configured. Set NEXT_PUBLIC_FIREBASE_* env vars.");
+  return db;
+}
 
 interface ConnectionData {
   connected: boolean;
@@ -52,7 +58,7 @@ function toPlatformConnection(
 export async function getUserConnections(
   userId: string
 ): Promise<PlatformConnection[]> {
-  const docRef = doc(db, "users", userId, "platformConnections", "default");
+  const docRef = doc(ensureDb(), "users", userId, "platformConnections", "default");
   const docSnap = await getDoc(docRef);
 
   if (!docSnap.exists()) {
@@ -72,7 +78,7 @@ export async function connectPlatform(
   platform: PlatformType,
   connectionData: Omit<ConnectionData, "connected" | "connectedAt">
 ): Promise<void> {
-  const docRef = doc(db, "users", userId, "platformConnections", "default");
+  const docRef = doc(ensureDb(), "users", userId, "platformConnections", "default");
   const docSnap = await getDoc(docRef);
 
   const now = new Date().toISOString();
@@ -108,7 +114,7 @@ export async function disconnectPlatform(
   userId: string,
   platform: PlatformType
 ): Promise<void> {
-  const docRef = doc(db, "users", userId, "platformConnections", "default");
+  const docRef = doc(ensureDb(), "users", userId, "platformConnections", "default");
   // Use setDoc with merge so disconnect doesn't throw if the doc was never created.
   await setDoc(
     docRef,
@@ -125,7 +131,7 @@ export async function getConnectionToken(
   userId: string,
   platform: PlatformType
 ): Promise<string | null> {
-  const docRef = doc(db, "users", userId, "platformConnections", "default");
+  const docRef = doc(ensureDb(), "users", userId, "platformConnections", "default");
   const docSnap = await getDoc(docRef);
 
   if (!docSnap.exists()) return null;

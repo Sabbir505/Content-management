@@ -6,6 +6,10 @@ import type { CreatorList } from "@/types/creator";
 
 export async function POST(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+    }
+
     const body = await request.json();
     const { userId, name, description } = body;
 
@@ -44,6 +48,10 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+    }
+
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
 

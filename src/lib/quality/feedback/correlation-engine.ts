@@ -3,11 +3,17 @@ import {
   query,
   where,
   getDocs,
+  type Firestore,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { getTrackedContent } from "./content-tracker";
 import { STRONG_CORRELATION_THRESHOLD } from "../constants";
 import type { CorrelationResult, PerformanceSnapshot, ScoreBreakdown } from "../types";
+
+function ensureDb(): Firestore {
+  if (!db) throw new Error("Firestore is not configured. Set NEXT_PUBLIC_FIREBASE_* env vars.");
+  return db;
+}
 
 interface ScorePerformancePair {
   scoreBreakdown: ScoreBreakdown;
@@ -28,7 +34,7 @@ export async function computeCorrelations(
   for (const entry of trackedContent) {
     // Get the 28d performance snapshot
     const q = query(
-      collection(db, "performanceSnapshots"),
+      collection(ensureDb(), "performanceSnapshots"),
       where("trackingEntryId", "==", entry.id),
       where("window", "==", "28d")
     );

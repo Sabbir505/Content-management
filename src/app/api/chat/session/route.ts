@@ -16,6 +16,10 @@ import { validateUserAccess } from "@/lib/api-auth";
 
 export async function POST(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+    }
+
     const body = await request.json();
     const { userId, title, boardId, cardId, sessionId: requestedSessionId } = body;
 
@@ -74,6 +78,10 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+    }
+
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
     const sessionId = searchParams.get("sessionId");

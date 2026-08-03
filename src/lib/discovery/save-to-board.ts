@@ -23,6 +23,8 @@ export async function saveVideoToBoard(
   const { doc, writeBatch, increment, serverTimestamp } = await import("firebase/firestore");
   const { db } = await import("@/lib/firebase");
 
+  if (!db) throw new Error("Firestore is not configured. Set NEXT_PUBLIC_FIREBASE_* env vars.");
+
   const cardId = crypto.randomUUID();
   const cardRef = doc(db, "users", userId, "boards", MY_IDEAS_BOARD_ID, "cards", cardId);
   const boardRef = doc(db, "users", userId, "boards", MY_IDEAS_BOARD_ID);
@@ -78,6 +80,8 @@ export async function saveContentToBoard(
 ): Promise<void> {
   const { doc, writeBatch, increment, serverTimestamp } = await import("firebase/firestore");
   const { db } = await import("@/lib/firebase");
+
+  if (!db) throw new Error("Firestore is not configured. Set NEXT_PUBLIC_FIREBASE_* env vars.");
 
   const cardId = crypto.randomUUID();
   const cardRef = doc(db, "users", userId, "boards", MY_IDEAS_BOARD_ID, "cards", cardId);

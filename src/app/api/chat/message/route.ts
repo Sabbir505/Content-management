@@ -6,6 +6,10 @@ import type { ChatMessage } from "@/types/chat";
 
 export async function POST(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+    }
+
     const body = await request.json();
     const { userId, sessionId, message } = body;
 

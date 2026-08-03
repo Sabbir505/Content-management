@@ -15,8 +15,13 @@ export interface UserProfile {
   updatedAt: string;
 }
 
+function ensureDb() {
+  if (!db) throw new Error("Firestore is not configured. Set NEXT_PUBLIC_FIREBASE_* env vars.");
+  return db;
+}
+
 export async function createOrUpdateUserProfile(user: User): Promise<UserProfile> {
-  const userRef = doc(db, "users", user.uid);
+  const userRef = doc(ensureDb(), "users", user.uid);
   const userSnap = await getDoc(userRef);
 
   const now = new Date().toISOString();
@@ -50,7 +55,7 @@ export async function createOrUpdateUserProfile(user: User): Promise<UserProfile
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  const userRef = doc(db, "users", uid);
+  const userRef = doc(ensureDb(), "users", uid);
   const userSnap = await getDoc(userRef);
 
   if (!userSnap.exists()) {
@@ -68,7 +73,7 @@ export async function updateUserChannel(
     youtubeChannelThumbnail: string;
   }
 ): Promise<void> {
-  const userRef = doc(db, "users", uid);
+  const userRef = doc(ensureDb(), "users", uid);
   await updateDoc(userRef, {
     ...channelData,
     connectedAt: new Date().toISOString(),

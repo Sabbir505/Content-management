@@ -5,6 +5,10 @@ import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
 export async function POST(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+    }
+
     const body = await request.json();
     const { userId, listId, creatorId } = body;
 

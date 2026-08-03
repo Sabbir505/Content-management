@@ -16,8 +16,66 @@ async function fetchChannelFromDataApi(channelId: string) {
   return data.items[0];
 }
 
+async function resolveChannelHandle(handle: string): Promise<string | null> {
+  if (!YOUTUBE_API_KEY) return null;
+  const cleanHandle = handle.startsWith("@") ? handle.slice(1) : handle;
+  try {
+    const response = await proxyFetch(
+      `https://www.googleapis.com/youtube/v3/channels?part=snippet&forHandle=${encodeURIComponent(cleanHandle)}&key=${YOUTUBE_API_KEY}`,
+      { headers: { Accept: "application/json" }, timeout: 10000 }
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as { items?: { id: string }[] };
+    if (data.items && data.items.length > 0) {
+      return data.items[0].id;
+    }
+  } catch {
+    // Fallback to search if forHandle fails
+  }
+  return null;
+}
+
+function extractChannelId(url: string): string | null {
+  const patterns = [
+    /youtube\.com\/channel\/(UC[\w-]+)/,
+    /youtube\.com\/c\/([\w-]+)/,
+    /youtube\.com\/user\/([\w-]+)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+
+  if (url.startsWith("UC") && url.length > 20) return url;
+
+  return null;
+}
+
+async function extractChannelIdOrResolve(url: string): Promise<string | null> {
+  const direct = extractChannelId(url);
+  if (direct && direct.startsWith("UC")) return direct;
+
+  const handleMatch = url.match(/youtube\.com\/@([\w-]+)/);
+  if (handleMatch) {
+    const resolved = await resolveChannelHandle(handleMatch[1]);
+    if (resolved) return resolved;
+  }
+
+  if (url.startsWith("@")) {
+    const resolved = await resolveChannelHandle(url);
+    if (resolved) return resolved;
+  }
+
+  return direct;
+}
+
 export async function POST(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+    }
+
     const body = await request.json();
     const { userId, channelUrl, channelId: directChannelId } = body;
 
@@ -31,7 +89,7 @@ export async function POST(request: NextRequest) {
     let channelId: string | null = directChannelId || null;
 
     if (channelUrl && !channelId) {
-      channelId = extractChannelId(channelUrl);
+      channelId = await extractChannelIdOrResolve(channelUrl);
     }
 
     if (!channelId) {
@@ -64,7 +122,6 @@ export async function POST(request: NextRequest) {
       updatedAt: serverTimestamp(),
     });
 
-    // Ensure an "All following" list exists and add this creator to it
     const listsRef = collection(db, "users", userId, "creatorLists");
     const listsSnapshot = await getDocs(listsRef);
     const allFollowingList = listsSnapshot.docs.find((d) => d.data().name === "All following");
@@ -96,26 +153,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function extractChannelId(url: string): string | null {
-  const patterns = [
-    /youtube\.com\/channel\/(UC[\w-]+)/,
-    /youtube\.com\/@([\w-]+)/,
-    /youtube\.com\/c\/([\w-]+)/,
-    /youtube\.com\/user\/([\w-]+)/,
-  ];
-
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) return match[1];
-  }
-
-  if (url.startsWith("UC") && url.length > 20) return url;
-
-  return null;
-}
-
 export async function GET(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+    }
+
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
 
