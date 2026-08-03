@@ -165,6 +165,11 @@ export async function POST(request: Request) {
 
 ## Firebase
 
+- **Initialize lazily.** `lib/firebase.ts` lazily initializes Firebase on first access and gracefully degrades when env vars are missing (no auth, no persistence). Do not assume Firebase is always available.
+- **Use Firestore rules** for security. Never trust client-side validation alone.
+- **Batch writes** when updating multiple documents.
+- **Index frequently queried fields.** Add composite indexes as needed.
+
 - **Initialize once.** Export initialized instances from `lib/firebase.ts`.
 - **Use Firestore rules** for security. Never trust client-side validation alone.
 - **Batch writes** when updating multiple documents.
@@ -182,6 +187,12 @@ export async function POST(request: Request) {
 ---
 
 ## Testing
+
+- **Test behavior, not implementation.** What the user sees, not how it's built.
+- **One test file per component.** Named `{ComponentName}.test.tsx`.
+- **Mock external APIs.** Do not hit real services in tests.
+- **Test critical paths:** auth, generation flows, error states.
+- **No test runner is currently configured.** Add one (Vitest or Jest) before writing new tests.
 
 - **Test behavior, not implementation.** What the user sees, not how it's built.
 - **One test file per component.** Named `{ComponentName}.test.tsx`.
@@ -247,6 +258,11 @@ counter++;
 ---
 
 ## Deployment
+
+- **Environment variables must be set before deployment.** The app builds without them, but features will be degraded.
+- **Build passes before deploying.** `npm run build` must succeed locally.
+- **Netlify:** Use `next` adapter, set build command and publish directory.
+- **Local:** `npm run dev` for development, `npm run build` + `npm start` for production-like testing.
 
 - **Environment variables must be set before deployment.**
 - **Build passes before deploying.** `npm run build` must succeed locally.

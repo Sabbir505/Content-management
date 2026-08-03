@@ -1,3 +1,9 @@
+<!-- BEGIN:nextjs-agent-rules -->
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+<!-- END:nextjs-agent-rules -->
+
 # TubeForge — Project Rules & Coding Standards
 
 ## General Principles
@@ -159,7 +165,7 @@ export async function POST(request: Request) {
 
 ## Firebase
 
-- **Initialize once.** Export initialized instances from `lib/firebase.ts`.
+- **Initialize lazily.** `lib/firebase.ts` lazily initializes Firebase on first access and gracefully degrades when env vars are missing (no auth, no persistence). Do not assume Firebase is always available.
 - **Use Firestore rules** for security. Never trust client-side validation alone.
 - **Batch writes** when updating multiple documents.
 - **Index frequently queried fields.** Add composite indexes as needed.
@@ -181,6 +187,7 @@ export async function POST(request: Request) {
 - **One test file per component.** Named `{ComponentName}.test.tsx`.
 - **Mock external APIs.** Do not hit real services in tests.
 - **Test critical paths:** auth, generation flows, error states.
+- **No test runner is currently configured.** Add one (Vitest or Jest) before writing new tests.
 
 ---
 
@@ -242,7 +249,7 @@ counter++;
 
 ## Deployment
 
-- **Environment variables must be set before deployment.**
+- **Environment variables must be set before deployment.** The app builds without them, but features will be degraded.
 - **Build passes before deploying.** `npm run build` must succeed locally.
 - **Netlify:** Use `next` adapter, set build command and publish directory.
 - **Local:** `npm run dev` for development, `npm run build` + `npm start` for production-like testing.

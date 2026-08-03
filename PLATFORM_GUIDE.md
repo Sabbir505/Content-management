@@ -305,6 +305,11 @@ The page component itself is now mostly: URL-param parsing, the main fetch effec
 
 ## Known limitations
 
+- **No React Query.** All server state is managed with plain `fetch` + `useState`. CLAUDE.md §State Management recommends React Query, but migration is out of scope for this refactor.
+- **OAuth not configured.** The Settings → Performance → Analytics Connections buttons show an error toast. Needs credentials in `.env.local`.
+- **Custom follower range unreachable from UI.** The "custom" option isn't in `FOLLOWER_RANGES`, so the min/max inputs are inert unless the user picks a preset that sets `selectedFollowers` to "custom" — which no preset does.
+- **Firebase proxy issue (environment-specific).** In some environments, Firebase requests may be blocked by a proxy. The app degrades to localStorage for boards, blocklist, creators, and chat-panel saves. Firestore writes from `handleSaveToBoard`/`handleSaveContentToBoard` (video/article save from feed) will fail silently. To fix: configure the proxy or run in an environment with Firebase access.
+
 - **Firestore proxy issue.** In the current environment, Firebase requests are blocked by a proxy. The app degrades to localStorage for boards, blocklist, creators, and chat-panel saves. Firestore writes from `handleSaveToBoard`/`handleSaveContentToBoard` (video/article save from feed) will fail silently. To fix: configure the proxy or run in an environment with Firebase access.
 - **No React Query.** All server state is managed with plain `fetch` + `useState`. CLAUDE.md §State Management recommends React Query, but migration is out of scope for this refactor.
 - **OAuth not configured.** The Settings → Performance → Analytics Connections buttons show an error toast. Needs credentials in `.env.local`.
@@ -324,7 +329,7 @@ All Firestore operations and external API calls live in hooks and `lib/` utiliti
 | Content sources | `src/lib/content/` | `youtube.ts`, `hackernews.ts`, `devto.ts`, `substack.ts` |
 | Hooks — data layer | `src/hooks/useBoardCardOps.ts` | Pure Firestore CRUD (loadCards, saveCardPosition, removeCard, etc.) |
 | Hooks — UI state | `src/hooks/useWorkspaceBoard.ts` | Composes data-layer hooks with React state + toast notifications |
-| Hooks — fetch | `src/hooks/useChat.ts`, `src/hooks/useChannelData.ts` | Owns full API lifecycle (chat, channel analytics) |
+| Hooks — fetch | `src/hooks/useConnectChannel.ts`, `src/hooks/useChannelAnalyticsState.ts` | Owns full API lifecycle (chat, channel analytics) |
 | Components — channel | `src/components/channel/` | `ChannelAnalytics.tsx` (orchestrator, 132 lines), `ChannelTabContent.tsx` (shared tab content, 316 lines), `StatCard`, `HealthScoreCard`, `CompareModal`, `FixVideoModal`, `ChannelVideoCard`, `ChannelVideoDetailModal`, `ChannelCharts` |
 | Hooks — Firebase | `src/hooks/useKeywords.ts`, `src/hooks/useBoards.ts` | Firestore subscriptions and CRUD for keywords/boards |
 
@@ -336,6 +341,16 @@ All Firestore operations and external API calls live in hooks and `lib/` utiliti
 - **Module-level functions for non-reactive code.** `migrateLegacyItems` doesn't need React state — it's a plain async function at module level.
 
 ## Testing the refactor
+
+After any change, run:
+
+```bash
+npx tsc --noEmit    # type check
+npx next build      # production build
+npm run dev         # local dev server for manual verification
+```
+
+Key flows to click through:
 
 After any change, run:
 

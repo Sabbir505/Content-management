@@ -1,5 +1,11 @@
 # TubeForge Project Audit Report
 
+> **⚠️ Historical document — all findings below have been resolved.**
+> This was a snapshot audit from 2026-07-23. Every item listed here has since been
+> fixed; see `BUGS-FIXED.md` for the verified fix status. Read the sections below
+> as historical context only, not current state. For the current security/auth
+> posture, see `BUGS-FIXED.md`.
+
 > **⚠️ Point-in-time report — most findings are now resolved.**
 > This was a snapshot audit. Many items listed below have since been fixed; see
 > `BUGS-FIXED.md` for the verified fix status. Specifically, the issues flagged

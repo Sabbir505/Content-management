@@ -1,5 +1,10 @@
 # TubeForge — Bug Hunt Report
 
+> **See `BUGS-FIXED.md` for the verified fix status of every item below.**
+> All critical and high-severity issues have been resolved.
+
+**Date:** 2026-07-23
+
 **Date:** 2026-07-23
 **Scope:** Full-codebase bug hunt across `src/app/api/**`, `src/lib/**`, `src/components/**`, `src/hooks/**`, `src/app/**/page.tsx`, and config (`next.config.ts`, `firestore.rules`, `package.json`, `firebase.ts`).
 **Method:** Four parallel deep-review passes plus manual verification of the highest-impact findings.

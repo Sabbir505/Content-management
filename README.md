@@ -35,11 +35,11 @@ npm run build
 npm run start
 ```
 
-Lint: `npm run lint`. Type-check: `npx tsc --noEmit`.
+Lint: `npm run lint`. Type-check: `npm run typecheck`.
 
 ## Environment variables
 
-Copy `.env.local.example` to `.env.local` and fill in. Required keys:
+Copy `env.local.example` to `.env.local` and fill in. Required keys:
 
 | Var | Purpose |
 |-----|---------|
@@ -52,6 +52,10 @@ Copy `.env.local.example` to `.env.local` and fill in. Required keys:
 | `HTTPS_PROXY` / `HTTP_PROXY` | Outbound proxy for `proxyFetch` (auto-detected on common local ports otherwise) |
 
 Never commit `.env.local` (it is gitignored).
+
+The app **builds and runs without any env vars** — Firebase features gracefully
+degrade (no auth, no persistence) so open-source contributors can clone and run
+immediately.
 
 ## Routes
 
@@ -81,6 +85,13 @@ API routes live under `/api/*` (YouTube, content, generation, chat, quality/feed
 
 See `PLATFORM_GUIDE.md` for the full feature/data-flow reference and
 `CLAUDE.md` / `AGENTS.md` for coding standards.
+
+## Security
+
+- Auth is enforced on all API routes via JWT signature verification (`jose` + Google JWKS).
+- CSP, X-Frame-Options, and other security headers are set in `next.config.ts`.
+- SSRF protection via `validateUrl` in `proxyFetch`.
+- Firestore rules enforce per-user data isolation.
 
 ## Deployment
 

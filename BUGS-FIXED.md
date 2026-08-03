@@ -43,6 +43,7 @@ All fixes below are applied, type-check clean (`tsc --noEmit`), production build
 - **#59 ContentCardModal** — clipboard guarded; `(item.author || item.source || "")` prevents TypeError.
 - **#60 headline toast** — awaits clipboard, only toasts on success.
 - **#61 login localStorage** — wrapped in try/catch.
+- **#65 Firebase config graceful degradation** — `lib/firebase.ts` now lazily initializes and silently returns `null` when env vars are missing, instead of failing with opaque errors. The app builds and runs without any Firebase config.
 - **#64 server.log** — removed from git tracking; `*.log` + `server.log` added to `.gitignore`.
 - **#69 post-scorer dup, #70 outlier weight, #73 youtube/video masking, #74 channel avg** — reviewed; left as-is (UX/tuning choices, not crashes; changing would alter ranking/behavior without product input).
 - **#7 platformConnections path** — code aligned to the per-user path the Firestore rules already cover (`users/{uid}/platformConnections/default`); `disconnectPlatform` now uses `setDoc` merge so it doesn't throw on a missing doc.
