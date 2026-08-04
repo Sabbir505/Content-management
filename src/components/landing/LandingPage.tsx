@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
@@ -87,14 +87,66 @@ const ACCENT: Record<string, { text: string; bg: string; border: string; dot: st
   },
 };
 
+const BEFORE_AFTER = {
+  before: [
+    "Staring at a blank page for hours",
+    "Copying templates that feel lifeless",
+    "Juggling 6 tools for one video",
+    "Guessing what the algorithm wants",
+    "Writing in a voice that isn't yours",
+  ],
+  after: [
+    "Signal-driven content every time",
+    "Structure decoded from viral hits",
+    "One loop: discover → forge → ship",
+    "SEO tuned to what's ranking now",
+    "Your voice, trained and amplified",
+  ],
+};
+
+const STEPS = [
+  { step: "Discover", text: "Search a niche or paste a creator. Outlierly surfaces outliers, not just popular videos." },
+  { step: "Decode", text: "Get a structural breakdown — hook, pace, title pattern, thumbnail contrast." },
+  { step: "Forge", text: "Generate a script, social posts, and SEO in your trained voice. Edit inline." },
+  { step: "Ship", text: "Export, publish, then import performance back in. The loop tightens every cycle." },
+];
+
+function useReveal() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          obs.unobserve(el);
+        }
+      },
+      { threshold: 0.12 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  return { ref, visible };
+}
+
 export function LandingPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [activeFeature, setActiveFeature] = useState(0);
 
   useEffect(() => {
-    // Defer to avoid setState synchronously within the effect (react-hooks/set-state-in-effect)
     queueMicrotask(() => setMounted(true));
   }, []);
+
+  const hero = useReveal();
+  const problem = useReveal();
+  const features = useReveal();
+  const steps = useReveal();
+  const pricing = useReveal();
+  const cta = useReveal();
 
   return (
     <div className="min-h-screen bg-[#070708] text-white overflow-x-hidden selection:bg-emerald-400/30">
@@ -143,106 +195,134 @@ export function LandingPage() {
       </nav>
 
       {/* Hero */}
-      <header className="relative max-w-7xl mx-auto px-4 md:px-6 pt-16 md:pt-28 pb-20">
-        <div className="max-w-3xl">
-          <div
-            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/[0.03] text-xs text-white/60 mb-8 transition-all duration-700 ${
-              mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
-            }`}
-          >
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 animate-ping opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            </span>
-            V1 Core — live now
-          </div>
+      <header className="relative min-h-[calc(100vh-4rem)] flex flex-col justify-center max-w-7xl mx-auto px-4 md:px-6 pt-12 pb-16">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <div>
+            <div
+              className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/[0.03] text-xs text-white/60 mb-6 transition-all duration-700 ${
+                mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+              }`}
+            >
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 animate-ping opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              </span>
+              V1 Core — live now
+            </div>
 
-          <h1
-            className={`text-5xl md:text-7xl font-semibold tracking-[-0.04em] leading-[0.95] mb-6 transition-all duration-700 delay-75 ${
-              mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
-            }`}
-          >
-            Stop guessing.
-            <br />
-            <span className="text-white/40">Start </span>
-            <span className="relative">
-              forging
-              <svg
-                className="absolute -bottom-2 left-0 w-full"
-                viewBox="0 0 200 8"
-                preserveAspectRatio="none"
-                aria-hidden
+            <h1
+              className={`text-5xl md:text-6xl xl:text-7xl font-semibold tracking-[-0.04em] leading-[0.95] mb-6 transition-all duration-700 delay-75 ${
+                mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+              }`}
+            >
+              Stop guessing.
+              <br />
+              <span className="text-white/40">Start </span>
+              <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+                forging
+              </span>{" "}
+              content.
+            </h1>
+
+            <p
+              className={`text-base md:text-lg text-white/50 max-w-lg mb-8 leading-relaxed transition-all duration-700 delay-150 ${
+                mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+              }`}
+            >
+              Outlierly reads the YouTube graph, decodes why things go viral, and
+              hands you scripts, posts, and SEO in your own voice — so every upload
+              starts from signal, not a blank page.
+            </p>
+
+            <div
+              className={`flex flex-col sm:flex-row gap-3 mb-6 transition-all duration-700 delay-300 ${
+                mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+              }`}
+            >
+              <Button
+                size="lg"
+                onClick={() => router.push("/auth/signup")}
+                className="bg-emerald-400 text-[#070708] hover:bg-emerald-300 h-12 px-7 text-base font-medium"
               >
-                <path
-                  d="M2 6 Q 50 1, 100 4 T 198 5"
-                  fill="none"
-                  stroke="url(#underline)"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <defs>
-                  <linearGradient id="underline" x1="0" x2="1">
-                    <stop offset="0" stopColor="#34d399" />
-                    <stop offset="1" stopColor="#22d3ee" />
-                  </linearGradient>
-                </defs>
-              </svg>
-            </span>{" "}
-            content.
-          </h1>
+                Forge your first piece →
+              </Button>
+              <Button
+                size="lg"
+                variant="ghost"
+                onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}
+                className="border border-white/15 bg-transparent text-white hover:bg-white/5 hover:border-white/25 hover:text-white h-12 px-7 text-base"
+              >
+                See how it works
+              </Button>
+            </div>
 
-          <p
-            className={`text-base md:text-lg text-white/50 max-w-xl mb-10 leading-relaxed transition-all duration-700 delay-150 ${
-              mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
-            }`}
-          >
-            Outlierly reads the YouTube graph, decodes why things go viral, and
-            hands you scripts, posts, and SEO in your own voice — so every upload
-            starts from signal, not a blank page.
-          </p>
-
-          <div
-            className={`flex flex-col sm:flex-row gap-3 mb-12 transition-all duration-700 delay-300 ${
-              mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
-            }`}
-          >
-            <Button
-              size="lg"
-              onClick={() => router.push("/auth/signup")}
-              className="bg-emerald-400 text-[#070708] hover:bg-emerald-300 h-12 px-7 text-base font-medium"
-            >
-              Forge your first piece →
-            </Button>
-            <Button
-              size="lg"
-              variant="ghost"
-              onClick={() => router.push("/auth/login")}
-              className="border border-white/15 bg-transparent text-white hover:bg-white/5 hover:border-white/25 hover:text-white h-12 px-7 text-base"
-            >
-              I already have an account
-            </Button>
+            <p className="text-xs text-white/30">
+              No credit card · Free during V1 · Your data stays yours
+            </p>
           </div>
 
-          <p className="text-xs text-white/30">
-            No credit card · Free during V1 · Your data stays yours
-          </p>
+          {/* Product mockup */}
+          <div
+            className={`hidden lg:block relative transition-all duration-1000 delay-500 ${
+              mounted ? "opacity-100 translate-x-0" : "opacity-0 translate-x-8"
+            }`}
+          >
+            <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-6 shadow-2xl">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-red-400/80" />
+                  <span className="w-3 h-3 rounded-full bg-amber-400/80" />
+                  <span className="w-3 h-3 rounded-full bg-emerald-400/80" />
+                </div>
+                <span className="text-[10px] text-white/30 ml-2">Outlierly — Discover</span>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.04] border border-white/5">
+                  <div className="w-20 h-12 rounded bg-emerald-400/20 flex items-center justify-center text-xs text-emerald-300">▶</div>
+                  <div className="flex-1">
+                    <div className="h-2.5 w-3/4 bg-white/20 rounded mb-1.5" />
+                    <div className="h-2 w-1/2 bg-white/10 rounded" />
+                  </div>
+                  <span className="text-xs text-emerald-400 font-mono">94</span>
+                </div>
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.04] border border-white/5">
+                  <div className="w-20 h-12 rounded bg-violet-400/20 flex items-center justify-center text-xs text-violet-300">▶</div>
+                  <div className="flex-1">
+                    <div className="h-2.5 w-2/3 bg-white/20 rounded mb-1.5" />
+                    <div className="h-2 w-1/3 bg-white/10 rounded" />
+                  </div>
+                  <span className="text-xs text-violet-400 font-mono">87</span>
+                </div>
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.04] border border-white/5">
+                  <div className="w-20 h-12 rounded bg-amber-400/20 flex items-center justify-center text-xs text-amber-300">▶</div>
+                  <div className="flex-1">
+                    <div className="h-2.5 w-4/5 bg-white/20 rounded mb-1.5" />
+                    <div className="h-2 w-2/5 bg-white/10 rounded" />
+                  </div>
+                  <span className="text-xs text-amber-400 font-mono">91</span>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-[10px] text-white/30">
+                <span>3 outliers found</span>
+                <span>Updated just now</span>
+              </div>
+            </div>
+            <div className="absolute -inset-4 -z-10 bg-gradient-to-br from-emerald-500/20 via-transparent to-cyan-500/20 rounded-3xl blur-2xl" />
+          </div>
         </div>
 
         {/* Live signal ticker */}
-        <div className="mt-16 md:mt-24 relative">
+        <div className="mt-16 md:mt-20 relative">
           <div className="flex items-center gap-3 mb-3">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-[10px] uppercase tracking-[0.25em] text-white/40">
               live signal feed
             </span>
           </div>
-          <div className="relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
+          <div className="relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] backdrop-blur-sm">
             <div className="flex animate-marquee whitespace-nowrap py-3">
               {[...SIGNALS, ...SIGNALS].map((s, i) => (
-                <span
-                  key={i}
-                  className="mx-6 text-sm text-white/50 font-mono"
-                >
+                <span key={i} className="mx-6 text-sm text-white/50 font-mono">
                   <span className="text-emerald-400/70 mr-2">▸</span>
                   {s}
                 </span>
@@ -254,171 +334,373 @@ export function LandingPage() {
         </div>
       </header>
 
-      {/* The problem — a pull quote band */}
-      <section className="relative max-w-7xl mx-auto px-4 md:px-6 py-20 md:py-28">
-        <div className="border-y border-white/5 py-12">
-          <p className="text-2xl md:text-4xl font-medium tracking-tight leading-snug max-w-4xl">
-            <span className="text-white/35">Every creator hits the same wall:</span>{" "}
-            <span className="text-white">
-              you know what to make, but not how it becomes a hit.
-            </span>{" "}
-            <span className="text-white/35">
-              Outlierly is the wall coming down.
-            </span>
+      {/* Social Proof */}
+      <section ref={hero.ref} className="relative max-w-7xl mx-auto px-4 md:px-6 py-12">
+        <div
+          className={`flex flex-col md:flex-row items-center justify-center gap-6 md:gap-10 transition-all duration-700 ${
+            hero.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+          }`}
+        >
+          <div className="flex -space-x-2">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div
+                key={i}
+                className="w-8 h-8 rounded-full border-2 border-[#070708] bg-gradient-to-br from-emerald-400/30 to-cyan-400/30 flex items-center justify-center text-[10px] text-white/60"
+              >
+                {String.fromCharCode(64 + i)}
+              </div>
+            ))}
+          </div>
+          <p className="text-sm text-white/40 text-center md:text-left">
+            <span className="text-white/60 font-medium">1,000+ creators</span> use Outlierly to find signals and forge content
           </p>
+          <div className="flex items-center gap-3 text-white/30">
+            <span className="text-xs">Works with</span>
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0012 2z"/></svg>
+          </div>
         </div>
       </section>
 
-      {/* Features — asymmetric bento */}
-      <section className="relative max-w-7xl mx-auto px-4 md:px-6 pb-20">
-        <div className="mb-12">
-          <span className="text-[10px] uppercase tracking-[0.25em] text-emerald-400/70">
-            the loop
-          </span>
-          <h2 className="text-3xl md:text-5xl font-semibold tracking-tight mt-2">
-            Four moves. One feedback loop.
-          </h2>
-        </div>
+      {/* Problem / Solution */}
+      <section ref={problem.ref} className="relative max-w-7xl mx-auto px-4 md:px-6 py-20 md:py-28">
+        <div
+          className={`grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-16 transition-all duration-700 ${
+            problem.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+          }`}
+        >
+          <div className="rounded-2xl border border-red-400/20 bg-red-400/[0.03] p-8">
+            <div className="flex items-center gap-2 mb-6">
+              <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              <h3 className="text-sm font-medium text-red-300 uppercase tracking-wider">Before Outlierly</h3>
+            </div>
+            <ul className="space-y-4">
+              {BEFORE_AFTER.before.map((item) => (
+                <li key={item} className="flex items-start gap-3 text-white/50">
+                  <span className="mt-1 w-1.5 h-1.5 rounded-full bg-red-400/60 shrink-0" />
+                  <span className="text-sm">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {FEATURES.map((f) => {
-            const a = ACCENT[f.accent];
-            return (
-              <article
-                key={f.key}
-                className={`group relative rounded-2xl border ${a.border} bg-white/[0.02] p-7 md:p-9 transition-all duration-300 hover:bg-white/[0.04] hover:${a.glow}`}
-              >
-                <div className="flex items-start justify-between mb-8">
-                  <span className={`text-[10px] uppercase tracking-[0.25em] ${a.text}`}>
-                    {f.tag}
-                  </span>
-                  <div className={`flex items-baseline gap-1.5 ${a.bg} px-2.5 py-1 rounded-md`}>
-                    <span className={`text-lg font-semibold ${a.text}`}>{f.metricValue}</span>
-                    <span className="text-[9px] uppercase tracking-wider text-white/40">
-                      {f.metric}
-                    </span>
+          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.03] p-8">
+            <div className="flex items-center gap-2 mb-6">
+              <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <h3 className="text-sm font-medium text-emerald-300 uppercase tracking-wider">After Outlierly</h3>
+            </div>
+            <ul className="space-y-4">
+              {BEFORE_AFTER.after.map((item) => (
+                <li key={item} className="flex items-start gap-3 text-white/70">
+                  <span className="mt-1 w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                  <span className="text-sm">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* Features — Interactive Tabs */}
+      <section id="features" ref={features.ref} className="relative max-w-7xl mx-auto px-4 md:px-6 py-20 md:py-28">
+        <div
+          className={`transition-all duration-700 ${
+            features.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+          }`}
+        >
+          <div className="mb-12">
+            <span className="text-[10px] uppercase tracking-[0.25em] text-emerald-400/70">
+              the loop
+            </span>
+            <h2 className="text-3xl md:text-5xl font-semibold tracking-tight mt-2">
+              Four moves. One feedback loop.
+            </h2>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mb-8">
+            {FEATURES.map((f, i) => {
+              const a = ACCENT[f.accent];
+              const active = activeFeature === i;
+              return (
+                <button
+                  key={f.key}
+                  onClick={() => setActiveFeature(i)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 border cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 ${
+                    active
+                      ? `${a.border} ${a.bg} ${a.text}`
+                      : "border-white/10 text-white/50 hover:text-white/70 hover:border-white/20"
+                  }`}
+                >
+                  {f.tag}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="relative rounded-2xl border border-white/10 bg-white/[0.02] p-8 md:p-12 transition-all duration-500">
+            {(() => {
+              const f = FEATURES[activeFeature];
+              const a = ACCENT[f.accent];
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-8 items-start">
+                  <div>
+                    <h3 className="text-2xl md:text-3xl font-medium tracking-tight mb-4">
+                      {f.title}
+                    </h3>
+                    <p className="text-white/50 leading-relaxed mb-6 max-w-lg">{f.body}</p>
+                    <div className={`inline-flex items-baseline gap-1.5 ${a.bg} px-3 py-1.5 rounded-md`}>
+                      <span className={`text-xl font-semibold ${a.text}`}>{f.metricValue}</span>
+                      <span className="text-[10px] uppercase tracking-wider text-white/40">{f.metric}</span>
+                    </div>
+                  </div>
+                  <div className={`rounded-xl border ${a.border} ${a.bg} p-6 ${a.glow} transition-all duration-500`}>
+                    <div className="space-y-3">
+                      <div className="h-2 w-full bg-white/10 rounded" />
+                      <div className="h-2 w-3/4 bg-white/10 rounded" />
+                      <div className="h-2 w-5/6 bg-white/10 rounded" />
+                      <div className="h-20 mt-4 rounded-lg bg-white/[0.05] flex items-center justify-center">
+                        <span className={`text-3xl font-bold ${a.text}`}>{f.metricValue}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <h3 className="text-xl md:text-2xl font-medium tracking-tight mb-3 leading-snug">
-                  {f.title}
-                </h3>
-                <p className="text-sm text-white/50 leading-relaxed">{f.body}</p>
-                <div className="mt-6 flex items-center gap-2">
-                  <span className={`h-1.5 w-1.5 rounded-full ${a.dot}`} />
-                  <span className="text-xs text-white/40 group-hover:text-white/60 transition-colors">
-                    {f.key === "discover" && "Trending → outlier → structure"}
-                    {f.key === "create" && "Voice profile → script → post"}
-                    {f.key === "optimize" && "Ranking data → title → thumbnail"}
-                    {f.key === "analyze" && "Channel import → score → decision"}
-                  </span>
-                </div>
-              </article>
-            );
-          })}
+              );
+            })()}
+          </div>
         </div>
       </section>
 
-      {/* How it works — vertical steps */}
-      <section className="relative max-w-7xl mx-auto px-4 md:px-6 py-20 md:py-28">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-12 lg:gap-20">
-          <div>
+      {/* How It Works */}
+      <section ref={steps.ref} className="relative max-w-7xl mx-auto px-4 md:px-6 py-20 md:py-28">
+        <div
+          className={`transition-all duration-700 ${
+            steps.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+          }`}
+        >
+          <div className="text-center mb-16">
             <span className="text-[10px] uppercase tracking-[0.25em] text-emerald-400/70">
               the path
             </span>
-            <h2 className="text-3xl md:text-5xl font-semibold tracking-tight mt-2 mb-4 leading-tight">
-              From blank page to published,
-              <br />
-              in one sitting.
+            <h2 className="text-3xl md:text-5xl font-semibold tracking-tight mt-2">
+              From blank page to published
             </h2>
-            <p className="text-white/50 leading-relaxed max-w-md">
-              No tab juggling. No copy-paste between six tools. The whole loop lives
-              here — and the more you use it, the sharper your voice profile gets.
-            </p>
           </div>
 
-          <ol className="relative">
-            <div className="absolute left-[15px] top-2 bottom-2 w-px bg-gradient-to-b from-emerald-400/60 via-white/10 to-transparent" />
-            {[
-              {
-                step: "Discover",
-                text: "Search a niche or paste a creator. Outlierly surfaces outliers, not just popular videos.",
-              },
-              {
-                step: "Decode",
-                text: "Get a structural breakdown — hook, pace, title pattern, thumbnail contrast — the stuff that actually predicts performance.",
-              },
-              {
-                step: "Forge",
-                text: "Generate a script, social posts, and SEO in your trained voice. Edit inline, regenerate sections.",
-              },
-              {
-                step: "Ship",
-                text: "Export, publish, then import performance back in. The loop tightens on itself every cycle.",
-              },
-            ].map((s, i) => (
-              <li key={s.step} className="relative pl-12 pb-8 last:pb-0">
-                <div className="absolute left-0 top-0 flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-[#070708] text-xs font-mono text-white/60">
-                  {i + 1}
+          <div className="hidden md:block">
+            <div className="relative flex items-start justify-between">
+              <div className="absolute top-6 left-[12%] right-[12%] h-px bg-gradient-to-r from-emerald-400/40 via-white/20 to-emerald-400/40" />
+              {STEPS.map((s, i) => (
+                <div key={s.step} className="relative flex flex-col items-center text-center z-10" style={{ width: "22%" }}>
+                  <div className="w-12 h-12 rounded-full border border-emerald-400/40 bg-[#070708] flex items-center justify-center text-sm font-mono text-emerald-400 mb-4">
+                    {i + 1}
+                  </div>
+                  <h3 className="text-base font-medium mb-2">{s.step}</h3>
+                  <p className="text-sm text-white/50 leading-relaxed">{s.text}</p>
                 </div>
-                <h3 className="text-base font-medium mb-1">{s.step}</h3>
-                <p className="text-sm text-white/50 leading-relaxed">{s.text}</p>
-              </li>
-            ))}
-          </ol>
+              ))}
+            </div>
+          </div>
+
+          <div className="md:hidden">
+            <ol className="relative">
+              <div className="absolute left-[19px] top-2 bottom-2 w-px bg-gradient-to-b from-emerald-400/60 via-white/10 to-transparent" />
+              {STEPS.map((s, i) => (
+                <li key={s.step} className="relative pl-14 pb-8 last:pb-0">
+                  <div className="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-full border border-emerald-400/40 bg-[#070708] text-xs font-mono text-emerald-400">
+                    {i + 1}
+                  </div>
+                  <h3 className="text-base font-medium mb-1">{s.step}</h3>
+                  <p className="text-sm text-white/50 leading-relaxed">{s.text}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="relative max-w-7xl mx-auto px-4 md:px-6 py-20 md:py-32">
-        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-500/10 via-transparent to-cyan-500/10 p-10 md:p-16 text-center">
-          <div className="pointer-events-none absolute inset-0 opacity-30">
-            <div className="absolute -top-20 left-1/2 -translate-x-1/2 h-60 w-60 rounded-full bg-emerald-400/30 blur-[100px]" />
-          </div>
-          <div className="relative">
-            <ForgeMark className="mx-auto mb-6" />
-            <h2 className="text-3xl md:text-5xl font-semibold tracking-tight mb-4">
-              Your next hit isn&apos;t luck.
+      {/* Pricing */}
+      <section ref={pricing.ref} className="relative max-w-7xl mx-auto px-4 md:px-6 py-20">
+        <div
+          className={`transition-all duration-700 ${
+            pricing.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+          }`}
+        >
+          <div className="text-center mb-12">
+            <span className="text-[10px] uppercase tracking-[0.25em] text-emerald-400/70">
+              pricing
+            </span>
+            <h2 className="text-3xl md:text-5xl font-semibold tracking-tight mt-2">
+              Free during V1
             </h2>
-            <p className="text-white/50 max-w-lg mx-auto mb-8">
-              It&apos;s structure, decoded and handed back to you in your own voice.
-              Start in two minutes.
+            <p className="text-white/50 mt-3 max-w-md mx-auto">
+              Lock in early access. No credit card required.
             </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+            <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/[0.03] p-8 relative overflow-hidden">
+              <div className="absolute top-0 right-0 px-3 py-1 bg-emerald-400 text-[#070708] text-[10px] font-bold uppercase tracking-wider rounded-bl-lg">
+                Current
+              </div>
+              <h3 className="text-xl font-medium mb-2">Free</h3>
+              <p className="text-3xl font-bold mb-6">
+                $0 <span className="text-sm font-normal text-white/40">/ month</span>
+              </p>
+              <ul className="space-y-3 mb-8">
+                {[
+                  "Unlimited outlier discovery",
+                  "Voice profile training",
+                  "Script & post generation",
+                  "SEO optimization",
+                  "Channel analytics",
+                ].map((item) => (
+                  <li key={item} className="flex items-center gap-2 text-sm text-white/60">
+                    <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    {item}
+                  </li>
+                ))}
+              </ul>
               <Button
-                size="lg"
                 onClick={() => router.push("/auth/signup")}
-                className="bg-white text-[#070708] hover:bg-white/90 h-12 px-7 text-base font-medium"
+                className="w-full bg-emerald-400 text-[#070708] hover:bg-emerald-300 font-medium"
               >
-                Forge my first piece
+                Start free
               </Button>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-8 relative opacity-60">
+              <h3 className="text-xl font-medium mb-2">Pro</h3>
+              <p className="text-3xl font-bold mb-6">
+                $29 <span className="text-sm font-normal text-white/40">/ month</span>
+              </p>
+              <ul className="space-y-3 mb-8">
+                {[
+                  "Everything in Free",
+                  "Priority generation queue",
+                  "Advanced analytics",
+                  "Team collaboration",
+                  "API access",
+                ].map((item) => (
+                  <li key={item} className="flex items-center gap-2 text-sm text-white/60">
+                    <svg className="w-4 h-4 text-white/30 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    {item}
+                  </li>
+                ))}
+              </ul>
               <Button
-                size="lg"
+                disabled
                 variant="ghost"
-                onClick={() => router.push("/auth/login")}
-                className="border border-white/15 bg-transparent text-white hover:bg-white/5 hover:text-white h-12 px-7 text-base"
+                className="w-full border border-white/10 text-white/40 cursor-not-allowed"
               >
-                Sign in
+                Coming soon
               </Button>
             </div>
           </div>
         </div>
       </section>
 
+      {/* Final CTA */}
+      <section ref={cta.ref} className="relative max-w-7xl mx-auto px-4 md:px-6 py-20 md:py-32">
+        <div
+          className={`relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-500/10 via-transparent to-cyan-500/10 p-10 md:p-20 text-center transition-all duration-700 ${
+            cta.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+          }`}
+        >
+          <div className="pointer-events-none absolute inset-0 opacity-40">
+            <div className="absolute -top-20 left-1/2 -translate-x-1/2 h-80 w-80 rounded-full bg-emerald-400/20 blur-[120px]" />
+            <div className="absolute -bottom-20 left-1/4 h-60 w-60 rounded-full bg-cyan-400/20 blur-[100px]" />
+          </div>
+          <div className="relative">
+            <ForgeMark className="mx-auto mb-6" />
+            <h2 className="text-3xl md:text-5xl font-semibold tracking-tight mb-4">
+              Your next hit isn&apos;t luck.
+            </h2>
+            <p className="text-white/50 max-w-lg mx-auto mb-2">
+              It&apos;s structure, decoded and handed back to you in your own voice.
+            </p>
+            <p className="text-sm text-emerald-400/70 mb-8">
+              Join 1,000+ creators who refuse to guess.
+            </p>
+            <Button
+              size="lg"
+              onClick={() => router.push("/auth/signup")}
+              className="bg-white text-[#070708] hover:bg-white/90 h-14 px-10 text-lg font-medium"
+            >
+              Forge my first piece →
+            </Button>
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="border-t border-white/5">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <ForgeMark />
-            <span className="text-sm font-medium">Outlierly</span>
-            <span className="text-xs text-white/30">· content intelligence</span>
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-12">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <ForgeMark />
+                <span className="text-sm font-medium">Outlierly</span>
+              </div>
+              <p className="text-xs text-white/30">
+                Content intelligence for creators who refuse to guess.
+              </p>
+            </div>
+            <div>
+              <h4 className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">Product</h4>
+              <ul className="space-y-2">
+                {["Discover", "Create", "Optimize", "Analyze"].map((item) => (
+                  <li key={item}>
+                    <button
+                      onClick={() => router.push("/discover")}
+                      className="text-xs text-white/40 hover:text-white/70 transition-colors cursor-pointer"
+                    >
+                      {item}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">Resources</h4>
+              <ul className="space-y-2">
+                {["Documentation", "GitHub", "Changelog"].map((item) => (
+                  <li key={item}>
+                    <span className="text-xs text-white/40">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">Company</h4>
+              <ul className="space-y-2">
+                {["Twitter / X", "Contact"].map((item) => (
+                  <li key={item}>
+                    <span className="text-xs text-white/40">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-          <p className="text-xs text-white/30 font-mono">
-            v1.0 · built for creators who refuse to guess
-          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8 border-t border-white/5">
+            <p className="text-xs text-white/30 font-mono">
+              v1.0 · built for creators who refuse to guess
+            </p>
+            <p className="text-xs text-white/20">
+              © 2026 Outlierly. All rights reserved.
+            </p>
+          </div>
         </div>
       </footer>
 
-      {/* Inline style block for keyframes (Tailwind v4 lacks custom keyframes without config) */}
       <style>{`
         @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
         .animate-marquee { animation: marquee 40s linear infinite; }
