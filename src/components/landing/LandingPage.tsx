@@ -145,7 +145,6 @@ export function LandingPage() {
   const problem = useReveal();
   const features = useReveal();
   const steps = useReveal();
-  const pricing = useReveal();
   const cta = useReveal();
 
   return (
@@ -523,91 +522,6 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing */}
-      <section ref={pricing.ref} className="relative max-w-7xl mx-auto px-4 md:px-6 py-20">
-        <div
-          className={`transition-all duration-700 ${
-            pricing.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
-          }`}
-        >
-          <div className="text-center mb-12">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-emerald-400/70">
-              pricing
-            </span>
-            <h2 className="text-3xl md:text-5xl font-semibold tracking-tight mt-2">
-              Free during V1
-            </h2>
-            <p className="text-white/50 mt-3 max-w-md mx-auto">
-              Lock in early access. No credit card required.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/[0.03] p-8 relative overflow-hidden">
-              <div className="absolute top-0 right-0 px-3 py-1 bg-emerald-400 text-[#070708] text-[10px] font-bold uppercase tracking-wider rounded-bl-lg">
-                Current
-              </div>
-              <h3 className="text-xl font-medium mb-2">Free</h3>
-              <p className="text-3xl font-bold mb-6">
-                $0 <span className="text-sm font-normal text-white/40">/ month</span>
-              </p>
-              <ul className="space-y-3 mb-8">
-                {[
-                  "Unlimited outlier discovery",
-                  "Voice profile training",
-                  "Script & post generation",
-                  "SEO optimization",
-                  "Channel analytics",
-                ].map((item) => (
-                  <li key={item} className="flex items-center gap-2 text-sm text-white/60">
-                    <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <Button
-                onClick={() => router.push("/auth/signup")}
-                className="w-full bg-emerald-400 text-[#070708] hover:bg-emerald-300 font-medium"
-              >
-                Start free
-              </Button>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-8 relative opacity-60">
-              <h3 className="text-xl font-medium mb-2">Pro</h3>
-              <p className="text-3xl font-bold mb-6">
-                $29 <span className="text-sm font-normal text-white/40">/ month</span>
-              </p>
-              <ul className="space-y-3 mb-8">
-                {[
-                  "Everything in Free",
-                  "Priority generation queue",
-                  "Advanced analytics",
-                  "Team collaboration",
-                  "API access",
-                ].map((item) => (
-                  <li key={item} className="flex items-center gap-2 text-sm text-white/60">
-                    <svg className="w-4 h-4 text-white/30 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <Button
-                disabled
-                variant="ghost"
-                className="w-full border border-white/10 text-white/40 cursor-not-allowed"
-              >
-                Coming soon
-              </Button>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Final CTA */}
       <section ref={cta.ref} className="relative max-w-7xl mx-auto px-4 md:px-6 py-20 md:py-32">
         <div
@@ -672,21 +586,36 @@ export function LandingPage() {
             <div>
               <h4 className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">Resources</h4>
               <ul className="space-y-2">
-                {["Documentation", "GitHub", "Changelog"].map((item) => (
-                  <li key={item}>
-                    <span className="text-xs text-white/40">{item}</span>
-                  </li>
-                ))}
+                <li>
+                  <a href="#" className="text-xs text-white/40 hover:text-white/70 transition-colors">
+                    Documentation
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://github.com/Sabbir505/Content-management"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-white/40 hover:text-white/70 transition-colors"
+                  >
+                    GitHub
+                  </a>
+                </li>
               </ul>
             </div>
             <div>
               <h4 className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">Company</h4>
               <ul className="space-y-2">
-                {["Twitter / X", "Contact"].map((item) => (
-                  <li key={item}>
-                    <span className="text-xs text-white/40">{item}</span>
-                  </li>
-                ))}
+                <li>
+                  <a
+                    href="https://x.com/Sabbirbyte"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-white/40 hover:text-white/70 transition-colors"
+                  >
+                    Twitter / X
+                  </a>
+                </li>
               </ul>
             </div>
           </div>
@@ -718,16 +647,29 @@ function ForgeMark({ className = "" }: { className?: string }) {
       className={`relative inline-flex h-7 w-7 items-center justify-center ${className}`}
       aria-hidden
     >
-      <span className="absolute inset-0 rounded-md bg-gradient-to-br from-emerald-400 to-cyan-400 opacity-90" />
-      <svg viewBox="0 0 24 24" className="relative h-4 w-4 text-[#070708]" fill="none">
+      <svg viewBox="0 0 32 32" className="h-7 w-7" fill="none">
+        <defs>
+          <linearGradient id="forgeGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#34d399" />
+            <stop offset="100%" stopColor="#22d3ee" />
+          </linearGradient>
+        </defs>
         <path
-          d="M4 14 L9 9 L13 13 L20 6"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          d="M16 2 L28 9 L28 23 L16 30 L4 23 L4 9 Z"
+          fill="url(#forgeGrad)"
+          opacity="0.15"
+          stroke="url(#forgeGrad)"
+          strokeWidth="1.5"
         />
-        <circle cx="20" cy="6" r="2" fill="currentColor" />
+        <path
+          d="M16 10 L22 14 L22 20 L16 24 L10 20 L10 14 Z"
+          fill="url(#forgeGrad)"
+          opacity="0.9"
+        />
+        <path
+          d="M16 12 L20 15 L16 22 L12 15 Z"
+          fill="#070708"
+        />
       </svg>
     </span>
   );
